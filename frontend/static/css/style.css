@@ -461,3 +461,89 @@ body {
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   margin-bottom: 1rem;
 }
+
+/* ========== MENU MOBILE (hamburger) ========== */
+.menu-toggle-btn {
+  display: none;
+  background: none;
+  border: none;
+  font-size: 1.4rem;
+  color: var(--primary);
+  padding: 0;
+  margin-right: 0.85rem;
+  line-height: 1;
+}
+
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 48px 0 0 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 250;
+}
+
+/* ========== RESPONSIVE (mobile & tablette) ========== */
+@media (max-width: 768px) {
+  /* Bandeau : on masque le long texte institutionnel, garde logo + badge DGI */
+  .bandeau-text { display: none; }
+  .bandeau-officiel { padding: 0.5rem 0.85rem; }
+
+  /* Sidebar devient un tiroir qui se glisse depuis la gauche */
+  .sidebar {
+    width: 78vw;
+    max-width: 280px;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    z-index: 400;
+  }
+  .sidebar.open { transform: translateX(0); }
+
+  .sidebar-backdrop.open { display: block; }
+
+  .menu-toggle-btn { display: inline-flex; align-items: center; }
+
+  /* Le contenu principal prend toute la largeur, plus de marge sidebar */
+  .main-content {
+    margin-left: 0;
+  }
+
+  .topbar {
+    padding: 0.75rem 1rem;
+  }
+
+  .topbar h5 {
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+  }
+
+  .content-area {
+    padding: 1rem;
+  }
+
+  /* Cartes / stats en pleine largeur, espacement réduit */
+  .stat-card {
+    padding: 1.1rem 1.2rem;
+  }
+  .stat-card .stat-value { font-size: 1.8rem; }
+
+  /* Login : la carte respire moins sur petit écran */
+  .login-card {
+    padding: 1.5rem;
+    border-radius: 12px;
+  }
+  .login-right { padding: 1rem; }
+
+  /* Tables : on garde le scroll horizontal natif de Bootstrap
+     (.table-responsive) mais on réduit le texte pour limiter le scroll */
+  .table thead th, .table tbody td {
+    padding: 0.6rem 0.7rem;
+    font-size: 0.82rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .login-brand h2 { font-size: 1.25rem; }
+  .stat-card .stat-value { font-size: 1.5rem; }
+  .content-area { padding: 0.75rem; }
+}

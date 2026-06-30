@@ -25,7 +25,7 @@
 </div>
 
 <!-- SIDEBAR -->
-<aside class="sidebar">
+<aside class="sidebar" id="sidebar">
   <div class="sidebar-brand">
     <div class="sidebar-brand-icon">
       <i class="bi bi-car-front-fill"></i>
@@ -56,10 +56,18 @@
   </div>
 </aside>
 
+<!-- Fond sombre derrière le menu mobile -->
+<div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
+
 <!-- MAIN -->
 <div class="main-content">
   <div class="topbar">
-    <h5>{% block page_title %}{% endblock %}</h5>
+    <h5>
+      <button class="menu-toggle-btn" onclick="toggleSidebar()" aria-label="Ouvrir le menu">
+        <i class="bi bi-list"></i>
+      </button>
+      {% block page_title %}{% endblock %}
+    </h5>
     <div id="topbar-right"></div>
   </div>
   <div class="content-area">
@@ -147,6 +155,21 @@
         <i class="bi bi-${item.icon}"></i> ${item.label}${badge}
       </a>`;
     }).join('');
+
+    // Sur mobile, fermer le menu après avoir cliqué sur un lien
+    nav.querySelectorAll('.nav-item').forEach(link => {
+      link.addEventListener('click', closeSidebar);
+    });
+  }
+
+  // ── Menu mobile ────────────────────────────────────────────
+  function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('open');
+    document.getElementById('sidebar-backdrop').classList.toggle('open');
+  }
+  function closeSidebar() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebar-backdrop').classList.remove('open');
   }
 </script>
 {% block scripts %}{% endblock %}

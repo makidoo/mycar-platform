@@ -69,6 +69,14 @@
     .otp-inputs input:focus { border-color:var(--orange); box-shadow:0 0 0 3px rgba(224,93,38,.12); }
     .otp-inputs input.filled { border-color:var(--orange); background:#fff1ea; }
 
+    /* Petits écrans : champs OTP plus étroits pour tenir sur la largeur */
+    @media (max-width: 400px) {
+      .otp-inputs { gap:.35rem; }
+      .otp-inputs input { width:42px; height:52px; font-size:1.3rem; }
+      .demo-code { font-size:1.5rem; letter-spacing:.25rem; }
+      .card { padding: 1.25rem !important; }
+    }
+
     /* Demo badge */
     .demo-badge { background:#fef3c7; border:1.5px solid #f59e0b; border-radius:10px; padding:.75rem 1rem; }
     .demo-code  { font-size:2rem; font-weight:800; letter-spacing:.4rem; color:var(--orange); }
