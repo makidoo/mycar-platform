@@ -3,11 +3,11 @@ services:
   db:
     image: postgres:15-alpine
     environment:
-      POSTGRES_DB: mycar_local
-      POSTGRES_USER: mycar_user
-      POSTGRES_PASSWORD: localpass123
+      POSTGRES_DB: ${DB_NAME:-mycar_local}
+      POSTGRES_USER: ${DB_USER:-mycar_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-localpass123}
     ports:
-      - "5433:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data_local:/var/lib/postgresql/data
     networks:
@@ -18,19 +18,19 @@ services:
       context: .
       dockerfile: Dockerfile.local
     command: python manage.py runserver 0.0.0.0:8000
+    env_file:
+      - .env
     environment:
-      - DEBUG=True
+      # Overrides : en interne au réseau Docker, le container "db" est
+      # toujours joignable sur host=db, port=5432 — peu importe la valeur
+      # de DB_HOST/DB_PORT dans .env (qui sert aux connexions hors Docker
+      # et au port publié côté hôte)
       - DB_HOST=db
-      - DB_NAME=mycar_local
-      - DB_USER=mycar_user
-      - DB_PASSWORD=localpass123
-      - SECRET_KEY=django-insecure-local-dev-key-only-change-me
-      - ALLOWED_HOSTS=localhost,127.0.0.1,.loca.lt,.trycloudflare.com
-      - MOCK_SERVICES=True
+      - DB_PORT=5432
     volumes:
       - .:/app
     ports:
-      - "8001:8000"
+      - "${WEB_PORT:-8000}:8000"
     depends_on:
       - db
     networks:
