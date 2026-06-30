@@ -1,0 +1,32 @@
+# Environnement / secrets
+.env
+.env.local
+.env.prod
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# Django
+staticfiles/
+media/
+db.sqlite3
+
+# Docker overrides locaux
+docker-compose.override.yml
+
+# Frontend build (généré, pas besoin de versionner)
+frontend/build/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Claude
+.claude/

@@ -1,0 +1,178 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MY CAR — Connexion</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.css" rel="stylesheet">
+  <link href="{% static 'css/style.css' %}" rel="stylesheet">
+</head>
+<body>
+
+<div class="login-page">
+
+  <!-- PANNEAU GAUCHE -->
+  <div class="login-left">
+    <div class="login-left-bg"></div>
+
+    <!-- Bandeau institutionnel compact -->
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:2.5rem;padding-bottom:1.5rem;border-bottom:1px solid rgba(255,255,255,0.12);">
+      <img src="{% static 'images/logo-dgi.png' %}" alt="Logo DGI" class="login-logo-dgi">
+      <div style="font-size:0.72rem;color:rgba(255,255,255,0.6);line-height:1.5;">
+        <strong style="color:white;font-size:0.8rem;">République du Niger</strong><br>
+        Ministère des Finances · Direction Générale des Impôts
+      </div>
+    </div>
+
+    <h1>Plateforme de<br>Gestion <span>MY CAR</span></h1>
+    <p>
+      Le système officiel de la <strong style="color:white;">DGI</strong> pour la gestion,
+      le suivi et la vérification des vignettes automobiles au Niger.
+    </p>
+
+    <div class="login-features">
+      <div class="login-feature">
+        <div class="login-feature-icon"><i class="bi bi-shield-check" style="color:#27AE60;"></i></div>
+        Données sécurisées et chiffrées
+      </div>
+      <div class="login-feature">
+        <div class="login-feature-icon"><i class="bi bi-qr-code" style="color:#E05D26;"></i></div>
+        Vérification QR en temps réel
+      </div>
+      <div class="login-feature">
+        <div class="login-feature-icon"><i class="bi bi-phone" style="color:#60A5FA;"></i></div>
+        Paiement Mobile Money intégré
+      </div>
+    </div>
+  </div>
+
+  <!-- PANNEAU DROIT -->
+  <div class="login-right">
+    <div class="login-card">
+
+      <!-- En-tête marque -->
+      <div class="login-brand">
+        <div class="login-brand-icon">
+          <i class="bi bi-car-front-fill"></i>
+        </div>
+        <div>
+          <h2>MY CAR</h2>
+          <p>DGI — République du Niger</p>
+        </div>
+      </div>
+
+      <h6 class="fw-semibold text-slate mb-1" style="color:#1e293b;">Connexion</h6>
+      <p class="text-muted small mb-4">Accédez à votre espace de travail</p>
+
+      <div id="alert-box" class="alert alert-danger d-none py-2 small mb-3"></div>
+
+      <form id="login-form">
+        <div class="mb-3">
+          <label class="form-label">Adresse email</label>
+          <div class="input-group">
+            <span class="input-group-text"><i class="bi bi-envelope"></i></span>
+            <input type="email" id="email" class="form-control" placeholder="votre@email.ne" required autofocus>
+          </div>
+        </div>
+        <div class="mb-4">
+          <label class="form-label">Mot de passe</label>
+          <div class="input-group">
+            <span class="input-group-text"><i class="bi bi-lock"></i></span>
+            <input type="password" id="password" class="form-control" placeholder="••••••••" required>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-orange-custom w-100 py-2" id="submit-btn">
+          <span id="btn-text"><i class="bi bi-box-arrow-in-right me-2"></i>Se connecter</span>
+          <span id="btn-spinner" class="d-none">
+            <span class="spinner-border spinner-border-sm me-2"></span>Connexion…
+          </span>
+        </button>
+      </form>
+
+      <hr class="my-4">
+
+      <!-- Comptes démo -->
+      <p class="text-muted small fw-semibold text-center mb-2">Comptes de démonstration</p>
+      <div class="d-flex flex-column gap-2">
+        <button class="btn btn-sm btn-outline-secondary demo-btn" data-email="superviseur@mycar.ne">
+          <i class="bi bi-person-badge me-1"></i>Superviseur DGI
+        </button>
+        <button class="btn btn-sm btn-outline-secondary demo-btn" data-email="agent@mycar.ne">
+          <i class="bi bi-person me-1"></i>Agent DGI
+        </button>
+        <button class="btn btn-sm btn-outline-secondary demo-btn" data-email="police@mycar.ne">
+          <i class="bi bi-shield me-1"></i>Police
+        </button>
+      </div>
+
+      <!-- Portail citoyen -->
+      <div class="mt-4 pt-3 border-top text-center">
+        <p class="text-muted small mb-2">Vous êtes propriétaire de véhicule ?</p>
+        <a href="/contribuable/" class="btn btn-sm w-100" style="border:1.5px solid #0F766E;color:#0F766E;border-radius:8px;font-weight:600;">
+          <i class="bi bi-phone me-2"></i>Renouveler ma vignette en ligne
+        </a>
+        <p class="text-muted mt-2" style="font-size:0.72rem;">
+          Démo : immat. <strong>NIA-001-A</strong> · région <strong>Niamey</strong>
+        </p>
+      </div>
+
+      <!-- SSL -->
+      <div class="text-center mt-3">
+        <span style="font-size:0.68rem;color:#94a3b8;">
+          <i class="bi bi-lock-fill me-1" style="color:#0F766E;"></i>Connexion SSL sécurisée 256-bit
+        </span>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="{% static 'js/api.js' %}"></script>
+<script>
+  if (Api.getToken()) {
+    const u = Api.getUser();
+    window.location.href = u?.role === 'POLICE' ? '/verification/' : '/dashboard/';
+  }
+
+  document.querySelectorAll('.demo-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.getElementById('email').value    = btn.dataset.email;
+      document.getElementById('password').value = 'Admin1234!';
+    });
+  });
+
+  document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const alert     = document.getElementById('alert-box');
+    const btnText   = document.getElementById('btn-text');
+    const spinner   = document.getElementById('btn-spinner');
+    const submitBtn = document.getElementById('submit-btn');
+
+    alert.classList.add('d-none');
+    btnText.classList.add('d-none');
+    spinner.classList.remove('d-none');
+    submitBtn.disabled = true;
+
+    const result = await Api.post('/auth/login/', {
+      email:    document.getElementById('email').value,
+      password: document.getElementById('password').value,
+    });
+
+    submitBtn.disabled = false;
+    btnText.classList.remove('d-none');
+    spinner.classList.add('d-none');
+
+    if (result?.ok) {
+      Api.setTokens(result.data.access, result.data.refresh);
+      const u = Api.getUser();
+      window.location.href = u?.role === 'POLICE' ? '/verification/' : '/dashboard/';
+    } else {
+      alert.textContent = 'Email ou mot de passe incorrect.';
+      alert.classList.remove('d-none');
+    }
+  });
+</script>
+</body>
+</html>

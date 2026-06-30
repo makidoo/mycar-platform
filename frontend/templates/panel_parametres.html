@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Paramètres{% endblock %}
+{% block page_title %}<i class="bi bi-sliders me-2"></i>Paramètres de la plateforme{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+
+  <!-- Identité plateforme -->
+  <div class="col-12">
+    <div class="card p-4">
+      <div class="section-title"><i class="bi bi-building me-2"></i>Identité</div>
+      <div class="row g-3" id="section-identite"></div>
+    </div>
+  </div>
+
+  <!-- Visibilité par rôle -->
+  <div class="col-12">
+    <div class="card p-4">
+      <div class="section-title"><i class="bi bi-eye me-2"></i>Accès aux fonctionnalités par rôle</div>
+      <p class="text-muted small mb-3">Définissez quels rôles peuvent accéder à chaque section. Séparez les valeurs par des virgules.</p>
+      <div class="row g-3" id="section-roles"></div>
+    </div>
+  </div>
+
+  <!-- Paramètres techniques -->
+  <div class="col-12">
+    <div class="card p-4">
+      <div class="section-title"><i class="bi bi-gear me-2"></i>Paramètres techniques</div>
+      <div class="row g-3" id="section-tech"></div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <button class="btn btn-primary-custom px-5" onclick="sauvegarderParametres()">
+      <i class="bi bi-save me-2"></i>Enregistrer tous les paramètres
+    </button>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const PARAM_GROUPS = {
+  identite: ['nom_plateforme', 'nom_organisation', 'devise'],
+  roles:    ['dashboard_roles', 'vehicules_roles', 'saisie_roles', 'verification_roles'],
+  tech:     ['duree_vignette_jours', 'otp_expiration_minutes'],
+};
+
+const ROLE_OPTIONS = [
+  'ADMINISTRATEUR_SYSTEME', 'SUPERVISEUR_DGI', 'AGENT_DGI', 'POLICE', 'CONTRIBUABLE'
+];
+const ROLE_LABELS_MAP = {
+  ADMINISTRATEUR_SYSTEME: 'Administrateur',
+  SUPERVISEUR_DGI: 'Superviseur DGI',
+  AGENT_DGI: 'Agent DGI',
+  POLICE: 'Police',
+  CONTRIBUABLE: 'Contribuable',
+};
+
+let parametres = {};
+
+async function loadParametres() {
+  const data = await Api.get('/admin/parametres/?page_size=100');
+  if (!data?.results) return;
+  data.results.forEach(p => { parametres[p.cle] = p; });
+  renderAll();
+}
+
+function renderAll() {
+  renderSection('identite', PARAM_GROUPS.identite, 'text');
+  renderRolesSection();
+  renderSection('tech', PARAM_GROUPS.tech, 'number');
+}
+
+function renderSection(sectionId, cles, inputType) {
+  const el = document.getElementById(`section-${sectionId}`);
+  el.innerHTML = cles.map(cle => {
+    const p = parametres[cle];
+    if (!p) return '';
+    return `
+      <div class="col-md-6">
+        <label class="form-label fw-semibold">${p.description}</label>
+        <input type="${inputType}" class="form-control" id="param-${cle}"
+               value="${p.valeur}" data-id="${p.id}" data-cle="${cle}">
+      </div>`;
+  }).join('');
+}
+
+function renderRolesSection() {
+  const el = document.getElementById('section-roles');
+  el.innerHTML = PARAM_GROUPS.roles.map(cle => {
+    const p = parametres[cle];
+    if (!p) return '';
+    const selectedRoles = p.valeur.split(',').map(r => r.trim()).filter(Boolean);
+    const checkboxes = ROLE_OPTIONS.map(role => `
+      <div class="form-check form-check-inline">
+        <input class="form-check-input role-check" type="checkbox"
+               id="check-${cle}-${role}" data-cle="${cle}" value="${role}"
+               ${selectedRoles.includes(role) ? 'checked' : ''}>
+        <label class="form-check-label small" for="check-${cle}-${role}">
+          ${ROLE_LABELS_MAP[role]}
+        </label>
+      </div>`).join('');
+    return `
+      <div class="col-12">
+        <label class="form-label fw-semibold">${p.description}</label>
+        <div class="p-3 rounded" style="background:#f8fafc; border:1px solid #e2e8f0;">
+          ${checkboxes}
+        </div>
+        <input type="hidden" id="param-${cle}" data-id="${p.id}" data-cle="${cle}" value="${p.valeur}">
+      </div>`;
+  }).join('');
+
+  // Sync checkboxes → hidden input
+  document.querySelectorAll('.role-check').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const cle = cb.dataset.cle;
+      const checked = [...document.querySelectorAll(`.role-check[data-cle="${cle}"]:checked`)]
+        .map(c => c.value).join(',');
+      document.getElementById(`param-${cle}`).value = checked;
+    });
+  });
+}
+
+async function sauvegarderParametres() {
+  const inputs = document.querySelectorAll('[id^="param-"][data-id]');
+  let errors = 0;
+
+  const promises = [...inputs].map(async input => {
+    const id     = input.dataset.id;
+    const valeur = input.value.trim();
+    const result = await Api.put(`/admin/parametres/${id}/`, {
+      cle: input.dataset.cle,
+      valeur,
+      description: parametres[input.dataset.cle]?.description || '',
+    });
+    if (!result?.ok) errors++;
+    else parametres[input.dataset.cle].valeur = valeur;
+  });
+
+  await Promise.all(promises);
+
+  if (errors === 0) {
+    showToast('Paramètres enregistrés avec succès.');
+  } else {
+    showToast(`${errors} paramètre(s) n'ont pas pu être sauvegardés.`, 'error');
+  }
+}
+
+loadParametres();
+</script>
+{% endblock %}

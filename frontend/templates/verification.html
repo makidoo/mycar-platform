@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Vérification{% endblock %}
+{% block page_title %}<i class="bi bi-shield-check me-2"></i>Vérification Police{% endblock %}
+{% block nav_verification %}active{% endblock %}
+
+{% block content %}
+<!-- Formulaire de recherche -->
+<div class="row justify-content-center mb-4">
+  <div class="col-lg-7">
+    <div class="card p-4">
+      <div class="text-center mb-3">
+        <i class="bi bi-shield-check text-primary" style="font-size:2.5rem;"></i>
+        <h5 class="mt-2 fw-bold">Contrôle de vignette</h5>
+        <p class="text-muted small mb-0">Saisissez l'immatriculation du véhicule à contrôler</p>
+      </div>
+      <div class="row g-2">
+        <div class="col-md-5">
+          <label class="form-label">Immatriculation</label>
+          <input type="text" id="input-immat" class="form-control form-control-lg text-uppercase fw-bold"
+                 placeholder="NIA-001-A" style="letter-spacing:2px;">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Région</label>
+          <select id="input-region" class="form-select form-select-lg">
+            <option value="">Sélectionner…</option>
+          </select>
+        </div>
+        <div class="col-md-3 d-flex align-items-end">
+          <button class="btn btn-primary-custom btn-lg w-100" onclick="verifier()">
+            <i class="bi bi-search me-1"></i>Vérifier
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Résultat -->
+<div id="result-zone"></div>
+
+<!-- Dernières vérifications -->
+<div class="row justify-content-center mt-4" id="recent-section" style="display:none!important;">
+  <div class="col-lg-7">
+    <div class="section-title">Dernières vérifications</div>
+    <div id="recent-checks" class="d-flex flex-column gap-2"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const recentChecks = [];
+
+async function loadRegions() {
+  const data = await Api.get('/regions/');
+  if (!data?.results) return;
+  const sel = document.getElementById('input-region');
+  data.results.forEach(r => {
+    sel.innerHTML += `<option value="${r.nom_region}">${r.nom_region}</option>`;
+  });
+}
+
+document.getElementById('input-immat').addEventListener('keydown', e => {
+  if (e.key === 'Enter') verifier();
+  // auto-uppercase
+  setTimeout(() => e.target.value = e.target.value.toUpperCase(), 0);
+});
+
+async function verifier() {
+  const immat  = document.getElementById('input-immat').value.trim().toUpperCase();
+  const region = document.getElementById('input-region').value;
+  const zone   = document.getElementById('result-zone');
+
+  if (!immat) {
+    zone.innerHTML = '<div class="row justify-content-center"><div class="col-lg-7"><div class="alert alert-warning">Veuillez saisir une immatriculation.</div></div></div>';
+    return;
+  }
+
+  zone.innerHTML = `<div class="row justify-content-center"><div class="col-lg-7 text-center py-4">
+    <span class="spinner-border text-primary me-2"></span>Vérification en cours…</div></div>`;
+
+  const params = new URLSearchParams({ search: immat });
+  if (region) params.set('region', region);
+  const data = await Api.get(`/automobiles/?${params}`);
+
+  if (!data || !data.results?.length) {
+    zone.innerHTML = `
+      <div class="row justify-content-center">
+        <div class="col-lg-7">
+          <div class="verif-hero rouge">
+            <div class="verif-icon"><i class="bi bi-x-circle"></i></div>
+            <div class="verif-statut">NON TROUVÉ</div>
+            <div class="verif-sub mt-2">Aucun véhicule immatriculé <strong>${immat}</strong>${region ? ` en région ${region}` : ''}</div>
+          </div>
+        </div>
+      </div>`;
+    return;
+  }
+
+  const auto = data.results[0];
+  const s = auto.statut_actuel;
+  const statut = s?.statut || 'ROUGE';
+  const cls = statut.toLowerCase();
+
+  const icons = { VERT: 'check-circle', ORANGE: 'exclamation-circle', ROUGE: 'x-circle' };
+  const msgs  = {
+    VERT:   'Vignette valide',
+    ORANGE: 'Vignette à renouveler',
+    ROUGE:  'Vignette expirée',
+  };
+
+  zone.innerHTML = `
+    <div class="row justify-content-center">
+      <div class="col-lg-7">
+        <div class="verif-hero ${cls}">
+          <div class="verif-icon"><i class="bi bi-${icons[statut]}"></i></div>
+          <div class="verif-statut">${statut}</div>
+          <div class="verif-sub">${msgs[statut]}</div>
+        </div>
+        <div class="card p-3 mt-3">
+          <div class="row g-3 text-center">
+            <div class="col-4">
+              <div class="text-muted small">Immatriculation</div>
+              <div class="fw-bold fs-5">${auto.immatriculation}</div>
+            </div>
+            <div class="col-4">
+              <div class="text-muted small">Région</div>
+              <div class="fw-bold">${auto.region?.nom_region || '—'}</div>
+            </div>
+            <div class="col-4">
+              <div class="text-muted small">Type</div>
+              <div class="fw-bold">${auto.type_vehicule}</div>
+            </div>
+            <div class="col-4">
+              <div class="text-muted small">Propriétaire</div>
+              <div class="fw-bold">${auto.nom} ${auto.prenom}</div>
+            </div>
+            <div class="col-4">
+              <div class="text-muted small">Marque</div>
+              <div class="fw-bold">${auto.marque} ${auto.modele || ''}</div>
+            </div>
+            <div class="col-4">
+              <div class="text-muted small">Expiration</div>
+              <div class="fw-bold ${statut === 'ROUGE' ? 'text-danger' : ''}">${formatDate(s?.date_fin_validite)}</div>
+            </div>
+          </div>
+          <div class="text-center mt-3">
+            <a href="/vehicules/${auto.id}/" class="btn btn-sm btn-outline-primary">
+              <i class="bi bi-card-text me-1"></i>Voir la fiche complète
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  // Historique récent
+  recentChecks.unshift({ immat: auto.immatriculation, statut, time: new Date() });
+  if (recentChecks.length > 5) recentChecks.pop();
+  updateRecent();
+}
+
+function updateRecent() {
+  const section = document.getElementById('recent-section');
+  const el = document.getElementById('recent-checks');
+  if (!recentChecks.length) { section.style.display = 'none'; return; }
+  section.style.removeProperty('display');
+  el.innerHTML = recentChecks.map(c => `
+    <div class="card p-2 px-3 d-flex flex-row align-items-center gap-3">
+      ${statutBadge(c.statut)}
+      <strong>${c.immat}</strong>
+      <span class="text-muted small ms-auto">${c.time.toLocaleTimeString('fr-FR')}</span>
+    </div>`).join('');
+}
+
+loadRegions();
+</script>
+{% endblock %}

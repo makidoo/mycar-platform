@@ -1,0 +1,44 @@
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: mycar_local
+      POSTGRES_USER: mycar_user
+      POSTGRES_PASSWORD: localpass123
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data_local:/var/lib/postgresql/data
+    networks:
+      - mycar_local_network
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    command: python manage.py runserver 0.0.0.0:8000
+    environment:
+      - DEBUG=True
+      - DB_HOST=db
+      - DB_NAME=mycar_local
+      - DB_USER=mycar_user
+      - DB_PASSWORD=localpass123
+      - SECRET_KEY=django-insecure-local-dev-key-only-change-me
+      - ALLOWED_HOSTS=localhost,127.0.0.1,.loca.lt,.trycloudflare.com
+      - MOCK_SERVICES=True
+    volumes:
+      - .:/app
+    ports:
+      - "8001:8000"
+    depends_on:
+      - db
+    networks:
+      - mycar_local_network
+
+volumes:
+  postgres_data_local:
+
+networks:
+  mycar_local_network:
+    driver: bridge

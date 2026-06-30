@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Nouveau véhicule{% endblock %}
+{% block page_title %}<i class="bi bi-plus-circle me-2"></i>Nouveau véhicule{% endblock %}
+{% block nav_saisie %}active{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-9">
+
+    <div id="success-banner" class="alert alert-success d-none mb-3">
+      <i class="bi bi-check-circle-fill me-2"></i>
+      Véhicule enregistré avec succès !
+      <a id="link-fiche" href="#" class="alert-link ms-2">Voir la fiche →</a>
+    </div>
+    <div id="error-banner" class="alert alert-danger d-none mb-3"></div>
+
+    <form id="saisie-form" novalidate>
+      <!-- Propriétaire -->
+      <div class="card p-4 mb-3">
+        <div class="section-title"><i class="bi bi-person me-2"></i>Propriétaire</div>
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Nom <span class="text-danger">*</span></label>
+            <input type="text" name="nom" class="form-control" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Prénom <span class="text-danger">*</span></label>
+            <input type="text" name="prenom" class="form-control" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Téléphone <span class="text-danger">*</span></label>
+            <input type="tel" name="telephone" class="form-control" placeholder="7XXXXXXXX" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Région <span class="text-danger">*</span></label>
+            <select name="region" class="form-select" required>
+              <option value="">Sélectionner une région…</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Pays</label>
+            <input type="text" name="pays" class="form-control" value="NIGER">
+          </div>
+        </div>
+      </div>
+
+      <!-- Véhicule -->
+      <div class="card p-4 mb-3">
+        <div class="section-title"><i class="bi bi-car-front me-2"></i>Informations du véhicule</div>
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Immatriculation <span class="text-danger">*</span></label>
+            <input type="text" name="immatriculation" class="form-control text-uppercase"
+                   placeholder="NIA-000-A" required style="letter-spacing:1px;">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Type <span class="text-danger">*</span></label>
+            <select name="type_vehicule" class="form-select" required>
+              <option value="">—</option>
+              <option value="VEHICULE">Véhicule</option>
+              <option value="MOTO">Moto</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Énergie</label>
+            <select name="energie" class="form-select">
+              <option value="">—</option>
+              <option value="DIESEL">Diesel</option>
+              <option value="ESSENCE">Essence</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Marque <span class="text-danger">*</span></label>
+            <input type="text" name="marque" class="form-control" placeholder="Toyota, Nissan…" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Modèle</label>
+            <input type="text" name="modele" class="form-control" placeholder="Hilux, Patrol…">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Puissance (CV) <span class="text-danger">*</span></label>
+            <input type="number" name="puissance_cv" class="form-control" min="1" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">N° Châssis <span class="text-danger">*</span></label>
+            <input type="text" name="numero_chassis" class="form-control text-uppercase" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Montant taxe annuelle (FCFA) <span class="text-danger">*</span></label>
+            <div class="input-group">
+              <input type="number" name="montant_taxe" class="form-control" min="0" step="500" required>
+              <span class="input-group-text">FCFA</span>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Date de mise en circulation</label>
+            <input type="date" name="date_mise_circulation" class="form-control">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Date édition carte grise</label>
+            <input type="date" name="date_edition_carte_grise" class="form-control">
+          </div>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="d-flex gap-2 justify-content-end">
+        <a href="/vehicules/" class="btn btn-outline-secondary px-4">
+          <i class="bi bi-x-lg me-1"></i>Annuler
+        </a>
+        <button type="submit" class="btn btn-primary-custom px-5" id="btn-submit">
+          <span id="btn-text"><i class="bi bi-save me-1"></i>Enregistrer</span>
+          <span id="btn-spinner" class="d-none"><span class="spinner-border spinner-border-sm me-1"></span>Enregistrement…</span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadRegions() {
+  const data = await Api.get('/regions/');
+  if (!data?.results) return;
+  const sel = document.querySelector('[name="region"]');
+  data.results.forEach(r => {
+    sel.innerHTML += `<option value="${r.id}">${r.nom_region}</option>`;
+  });
+}
+
+// Auto-uppercase immat & chassis
+['immatriculation', 'numero_chassis'].forEach(name => {
+  document.querySelector(`[name="${name}"]`)?.addEventListener('input', e => {
+    const pos = e.target.selectionStart;
+    e.target.value = e.target.value.toUpperCase();
+    e.target.setSelectionRange(pos, pos);
+  });
+});
+
+document.getElementById('saisie-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  if (!form.checkValidity()) { form.classList.add('was-validated'); return; }
+
+  const btnText    = document.getElementById('btn-text');
+  const spinner    = document.getElementById('btn-spinner');
+  const submitBtn  = document.getElementById('btn-submit');
+  const successBan = document.getElementById('success-banner');
+  const errorBan   = document.getElementById('error-banner');
+
+  btnText.classList.add('d-none');
+  spinner.classList.remove('d-none');
+  submitBtn.disabled = true;
+  successBan.classList.add('d-none');
+  errorBan.classList.add('d-none');
+
+  const fd = new FormData(form);
+  const payload = {};
+  fd.forEach((v, k) => { if (v !== '') payload[k] = v; });
+  // Convert numeric fields
+  ['puissance_cv', 'montant_taxe'].forEach(f => { if (payload[f]) payload[f] = Number(payload[f]); });
+
+  const result = await Api.post('/automobiles/', payload);
+
+  btnText.classList.remove('d-none');
+  spinner.classList.add('d-none');
+  submitBtn.disabled = false;
+
+  if (result?.ok) {
+    form.reset();
+    form.classList.remove('was-validated');
+    const id = result.data.id;
+    document.getElementById('link-fiche').href = `/vehicules/${id}/`;
+    successBan.classList.remove('d-none');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } else {
+    const errors = result?.data;
+    const msg = errors
+      ? Object.entries(errors).map(([k, v]) => `<strong>${k}</strong> : ${Array.isArray(v) ? v.join(', ') : v}`).join('<br>')
+      : 'Erreur lors de l\'enregistrement.';
+    errorBan.innerHTML = `<i class="bi bi-exclamation-triangle me-2"></i>${msg}`;
+    errorBan.classList.remove('d-none');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+});
+
+loadRegions();
+</script>
+{% endblock %}

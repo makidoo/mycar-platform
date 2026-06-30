@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Gestion utilisateurs{% endblock %}
+{% block page_title %}<i class="bi bi-people me-2"></i>Gestion des utilisateurs{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div id="count-label" class="text-muted small"></div>
+  <div class="d-flex gap-2">
+    <button class="btn btn-sm btn-outline-secondary" onclick="showModalPassword(null)">
+      <i class="bi bi-key me-1"></i>Mon mot de passe
+    </button>
+    <button class="btn btn-primary-custom btn-sm" onclick="showModalUser(null)">
+      <i class="bi bi-person-plus me-1"></i>Nouvel utilisateur
+    </button>
+  </div>
+</div>
+
+<!-- Filtres rapides par rôle -->
+<div class="d-flex gap-2 mb-3 flex-wrap">
+  <button class="btn btn-sm btn-outline-secondary active" onclick="filterRole('', this)">Tous</button>
+  <button class="btn btn-sm btn-outline-primary"   onclick="filterRole('ADMINISTRATEUR_SYSTEME', this)">Administrateurs</button>
+  <button class="btn btn-sm btn-outline-success"   onclick="filterRole('SUPERVISEUR_DGI', this)">Superviseurs</button>
+  <button class="btn btn-sm btn-outline-info"      onclick="filterRole('AGENT_DGI', this)">Agents DGI</button>
+  <button class="btn btn-sm btn-outline-warning"   onclick="filterRole('POLICE', this)">Police</button>
+  <button class="btn btn-sm btn-outline-secondary" onclick="filterRole('CONTRIBUABLE', this)">Contribuables</button>
+</div>
+
+<div class="table-card">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Nom</th>
+          <th>Email</th>
+          <th>Rôle</th>
+          <th>Structure</th>
+          <th>Statut</th>
+          <th>Créé le</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="users-tbody">
+        <tr><td colspan="7" class="text-center text-muted py-4">Chargement…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Modal créer/modifier utilisateur -->
+<div class="modal fade" id="modal-user" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modal-user-title">Nouvel utilisateur</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="user-id">
+        <div class="row g-3">
+          <div class="col-6">
+            <label class="form-label">Nom <span class="text-danger">*</span></label>
+            <input type="text" id="u-nom" class="form-control">
+          </div>
+          <div class="col-6">
+            <label class="form-label">Prénom <span class="text-danger">*</span></label>
+            <input type="text" id="u-prenom" class="form-control">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Email <span class="text-danger">*</span></label>
+            <input type="email" id="u-email" class="form-control">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Rôle <span class="text-danger">*</span></label>
+            <select id="u-role" class="form-select">
+              <option value="ADMINISTRATEUR_SYSTEME">Administrateur Système</option>
+              <option value="SUPERVISEUR_DGI">Superviseur DGI</option>
+              <option value="AGENT_DGI">Agent DGI</option>
+              <option value="POLICE">Police</option>
+              <option value="CONTRIBUABLE">Contribuable</option>
+            </select>
+          </div>
+          <div class="col-6">
+            <label class="form-label">Structure ID</label>
+            <input type="number" id="u-structure" class="form-control" placeholder="ex: 1">
+          </div>
+          <div class="col-6">
+            <label class="form-label">Statut</label>
+            <select id="u-actif" class="form-select">
+              <option value="true">Actif</option>
+              <option value="false">Inactif</option>
+            </select>
+          </div>
+          <div class="col-12" id="password-field">
+            <label class="form-label">Mot de passe <span class="text-danger">*</span></label>
+            <input type="password" id="u-password" class="form-control" placeholder="Min. 8 caractères">
+          </div>
+        </div>
+        <div id="user-alert" class="alert alert-danger d-none py-2 small mt-3"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button class="btn btn-primary-custom" onclick="sauvegarderUser()">
+          <i class="bi bi-save me-1"></i>Enregistrer
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal mot de passe -->
+<div class="modal fade" id="modal-password" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modal-pwd-title">Mot de passe</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="pwd-user-id">
+        <div id="ancien-pwd-section" class="mb-3">
+          <label class="form-label">Ancien mot de passe</label>
+          <input type="password" id="pwd-ancien" class="form-control">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Nouveau mot de passe</label>
+          <input type="password" id="pwd-nouveau" class="form-control" placeholder="Min. 8 caractères">
+        </div>
+        <div id="pwd-alert" class="alert alert-danger d-none py-2 small"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button class="btn btn-primary-custom" onclick="sauvegarderPassword()">
+          <i class="bi bi-check-lg me-1"></i>Modifier
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const modalUser     = new bootstrap.Modal(document.getElementById('modal-user'));
+const modalPassword = new bootstrap.Modal(document.getElementById('modal-password'));
+
+const ROLE_BADGES = {
+  ADMINISTRATEUR_SYSTEME: '<span class="badge" style="background:#1B3A6B">Admin</span>',
+  SUPERVISEUR_DGI:        '<span class="badge bg-success">Superviseur</span>',
+  AGENT_DGI:              '<span class="badge bg-info text-dark">Agent DGI</span>',
+  POLICE:                 '<span class="badge bg-warning text-dark">Police</span>',
+  CONTRIBUABLE:           '<span class="badge bg-secondary">Contribuable</span>',
+};
+
+let allUsers = [];
+let roleFilter = '';
+
+async function loadUsers() {
+  const data = await Api.get('/admin/utilisateurs/?page_size=200');
+  if (!data) return;
+  allUsers = data.results || [];
+  renderUsers();
+}
+
+function renderUsers() {
+  const list  = roleFilter ? allUsers.filter(u => u.role === roleFilter) : allUsers;
+  const tbody = document.getElementById('users-tbody');
+  document.getElementById('count-label').textContent = `${list.length} utilisateur${list.length !== 1 ? 's' : ''}`;
+
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><i class="bi bi-people"></i>Aucun utilisateur</div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = list.map(u => `
+    <tr>
+      <td><strong>${u.nom} ${u.prenom}</strong></td>
+      <td class="text-muted small">${u.email}</td>
+      <td>${ROLE_BADGES[u.role] || u.role}</td>
+      <td class="text-muted small">${u.structure_id || '—'}</td>
+      <td>${u.est_actif
+        ? '<span class="badge bg-success-subtle text-success border border-success-subtle">Actif</span>'
+        : '<span class="badge bg-danger-subtle text-danger border border-danger-subtle">Inactif</span>'}</td>
+      <td class="text-muted small">${formatDate(u.date_creation)}</td>
+      <td class="text-end">
+        <div class="d-flex gap-1 justify-content-end">
+          <button class="btn btn-sm btn-outline-secondary py-0" onclick='showModalUser(${JSON.stringify(u)})' title="Modifier">
+            <i class="bi bi-pencil"></i>
+          </button>
+          <button class="btn btn-sm btn-outline-warning py-0" onclick="showModalPassword(${u.id})" title="Mot de passe">
+            <i class="bi bi-key"></i>
+          </button>
+          <button class="btn btn-sm btn-outline-${u.est_actif ? 'danger' : 'success'} py-0"
+                  onclick="toggleActif(${u.id}, ${u.est_actif})"
+                  title="${u.est_actif ? 'Désactiver' : 'Activer'}">
+            <i class="bi bi-${u.est_actif ? 'pause-circle' : 'play-circle'}"></i>
+          </button>
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+function filterRole(role, btn) {
+  roleFilter = role;
+  document.querySelectorAll('[onclick^="filterRole"]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderUsers();
+}
+
+function showModalUser(user) {
+  const isNew = !user;
+  document.getElementById('modal-user-title').textContent = isNew ? 'Nouvel utilisateur' : 'Modifier l\'utilisateur';
+  document.getElementById('user-id').value       = user?.id || '';
+  document.getElementById('u-nom').value         = user?.nom || '';
+  document.getElementById('u-prenom').value      = user?.prenom || '';
+  document.getElementById('u-email').value       = user?.email || '';
+  document.getElementById('u-role').value        = user?.role || 'AGENT_DGI';
+  document.getElementById('u-structure').value   = user?.structure_id || '';
+  document.getElementById('u-actif').value       = user?.est_actif !== false ? 'true' : 'false';
+  document.getElementById('u-password').value    = '';
+  document.getElementById('password-field').style.display = isNew ? 'block' : 'none';
+  document.getElementById('user-alert').classList.add('d-none');
+  modalUser.show();
+}
+
+async function sauvegarderUser() {
+  const id     = document.getElementById('user-id').value;
+  const isNew  = !id;
+  const alertEl = document.getElementById('user-alert');
+  alertEl.classList.add('d-none');
+
+  const payload = {
+    nom:          document.getElementById('u-nom').value.trim(),
+    prenom:       document.getElementById('u-prenom').value.trim(),
+    email:        document.getElementById('u-email').value.trim(),
+    role:         document.getElementById('u-role').value,
+    est_actif:    document.getElementById('u-actif').value === 'true',
+  };
+  const structure = document.getElementById('u-structure').value;
+  if (structure) payload.structure_id = parseInt(structure);
+  if (isNew) payload.password = document.getElementById('u-password').value;
+
+  if (!payload.nom || !payload.prenom || !payload.email) {
+    alertEl.textContent = 'Nom, prénom et email sont obligatoires.';
+    alertEl.classList.remove('d-none');
+    return;
+  }
+
+  const result = isNew
+    ? await Api.post('/admin/utilisateurs/', payload)
+    : await Api.put(`/admin/utilisateurs/${id}/`, payload);
+
+  if (result?.ok) {
+    modalUser.hide();
+    showToast(isNew ? 'Utilisateur créé avec succès.' : 'Utilisateur modifié.');
+    loadUsers();
+  } else {
+    const err = result?.data;
+    alertEl.innerHTML = err ? Object.entries(err).map(([k,v]) => `<b>${k}</b>: ${Array.isArray(v)?v.join(', '):v}`).join('<br>') : 'Erreur.';
+    alertEl.classList.remove('d-none');
+  }
+}
+
+async function toggleActif(id, actif) {
+  const result = await Api.put(`/admin/utilisateurs/${id}/`, { est_actif: !actif });
+  if (result?.ok) { showToast(actif ? 'Utilisateur désactivé.' : 'Utilisateur activé.'); loadUsers(); }
+}
+
+function showModalPassword(userId) {
+  const isSelf = !userId;
+  document.getElementById('modal-pwd-title').textContent = isSelf ? 'Mon mot de passe' : 'Réinitialiser le mot de passe';
+  document.getElementById('pwd-user-id').value = userId || '';
+  document.getElementById('ancien-pwd-section').style.display = isSelf ? 'block' : 'none';
+  document.getElementById('pwd-ancien').value  = '';
+  document.getElementById('pwd-nouveau').value = '';
+  document.getElementById('pwd-alert').classList.add('d-none');
+  modalPassword.show();
+}
+
+async function sauvegarderPassword() {
+  const userId  = document.getElementById('pwd-user-id').value;
+  const isSelf  = !userId;
+  const nouveau = document.getElementById('pwd-nouveau').value;
+  const alertEl = document.getElementById('pwd-alert');
+  alertEl.classList.add('d-none');
+
+  if (nouveau.length < 8) {
+    alertEl.textContent = 'Le mot de passe doit contenir au moins 8 caractères.';
+    alertEl.classList.remove('d-none');
+    return;
+  }
+
+  let result;
+  if (isSelf) {
+    const ancien = document.getElementById('pwd-ancien').value;
+    result = await Api.post('/admin/utilisateurs/change_my_password/', {
+      ancien_password: ancien, nouveau_password: nouveau,
+    });
+  } else {
+    result = await Api.post(`/admin/utilisateurs/${userId}/reset_password/`, { password: nouveau });
+  }
+
+  if (result?.ok) {
+    modalPassword.hide();
+    showToast(isSelf ? 'Mot de passe modifié. Reconnectez-vous.' : 'Mot de passe réinitialisé.');
+    if (isSelf) setTimeout(() => Api.logout(), 2000);
+  } else {
+    alertEl.textContent = result?.data?.error || 'Erreur.';
+    alertEl.classList.remove('d-none');
+  }
+}
+
+loadUsers();
+</script>
+{% endblock %}

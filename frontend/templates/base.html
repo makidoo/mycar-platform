@@ -1,0 +1,154 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}MY CAR{% endblock %} — Vignettes Automobiles</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.css" rel="stylesheet">
+  <link href="{% static 'css/style.css' %}" rel="stylesheet">
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+<!-- BANDEAU INSTITUTIONNEL -->
+<div class="bandeau-officiel">
+  <div class="bandeau-left">
+    <img src="{% static 'images/logo-dgi.png' %}" alt="Logo DGI" class="bandeau-logo">
+    <div class="bandeau-text">
+      <strong>République du Niger</strong><br>
+      Ministère des Finances — Direction Générale des Impôts
+    </div>
+  </div>
+  <div class="bandeau-dgi">DGI</div>
+</div>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-brand">
+    <div class="sidebar-brand-icon">
+      <i class="bi bi-car-front-fill"></i>
+    </div>
+    <div>
+      MY CAR
+      <small>DGI — République du Niger</small>
+    </div>
+  </div>
+
+  <nav class="sidebar-nav" id="sidebar-nav">
+    <!-- Injecté par JS selon le rôle -->
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="user-chip">
+      <div class="user-avatar" id="user-avatar">?</div>
+      <div class="user-chip-text">
+        <div class="name" id="user-name">—</div>
+        <div class="role" id="user-role">—</div>
+      </div>
+    </div>
+    <button class="btn btn-sm w-100"
+            style="background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.8);border:1px solid rgba(255,255,255,0.2);"
+            onclick="Api.logout()">
+      <i class="bi bi-box-arrow-right me-1"></i> Déconnexion
+    </button>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<div class="main-content">
+  <div class="topbar">
+    <h5>{% block page_title %}{% endblock %}</h5>
+    <div id="topbar-right"></div>
+  </div>
+  <div class="content-area">
+    {% block content %}{% endblock %}
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{% static 'js/api.js' %}"></script>
+<script>
+  Api.requireAuth();
+  const _user = Api.getUser();
+
+  const ROLE_LABELS = {
+    ADMINISTRATEUR_SYSTEME: 'Administrateur',
+    SUPERVISEUR_DGI:        'Superviseur DGI',
+    AGENT_DGI:              'Agent DGI',
+    POLICE:                 'Police',
+    CONTRIBUABLE:           'Contribuable',
+  };
+
+  const NAV_CONFIG = {
+    ADMINISTRATEUR_SYSTEME: [
+      { section: 'Tableau de bord' },
+      { href: '/dashboard/',          icon: 'speedometer2',  label: 'Dashboard' },
+      { section: 'Véhicules' },
+      { href: '/vehicules/',          icon: 'car-front',     label: 'Véhicules' },
+      { href: '/saisie/',             icon: 'plus-circle',   label: 'Nouveau véhicule' },
+      { section: 'Contrôle' },
+      { href: '/verification/',       icon: 'shield-check',  label: 'Vérification Police' },
+      { section: 'Administration' },
+      { href: '/panel/utilisateurs/', icon: 'people',        label: 'Utilisateurs' },
+      { href: '/panel/parametres/',   icon: 'sliders',       label: 'Paramètres' },
+      { section: 'Portail citoyen' },
+      { href: '/contribuable/', icon: 'phone', label: 'Renouvellement vignette', badge: 'PUBLIC', target: '_blank' },
+    ],
+    SUPERVISEUR_DGI: [
+      { section: 'Tableau de bord' },
+      { href: '/dashboard/',    icon: 'speedometer2', label: 'Dashboard' },
+      { section: 'Véhicules' },
+      { href: '/vehicules/',    icon: 'car-front',    label: 'Véhicules' },
+      { section: 'Contrôle' },
+      { href: '/verification/', icon: 'shield-check', label: 'Vérification Police' },
+    ],
+    AGENT_DGI: [
+      { section: 'Véhicules' },
+      { href: '/vehicules/',    icon: 'car-front',    label: 'Véhicules' },
+      { href: '/saisie/',       icon: 'plus-circle',  label: 'Nouveau véhicule' },
+      { section: 'Contrôle' },
+      { href: '/verification/', icon: 'shield-check', label: 'Vérification Police' },
+    ],
+    POLICE: [
+      { href: '/verification/', icon: 'shield-check', label: 'Vérification' },
+    ],
+    CONTRIBUABLE: [],
+  };
+
+  if (_user) {
+    const initials = ((_user.nom?.[0] || '') + (_user.prenom?.[0] || '')).toUpperCase() || '?';
+    document.getElementById('user-avatar').textContent = initials;
+    document.getElementById('user-name').textContent   = `${_user.nom || ''} ${_user.prenom || ''}`.trim();
+    document.getElementById('user-role').textContent   = ROLE_LABELS[_user.role] || _user.role;
+
+    if (_user.role === 'POLICE' && !window.location.pathname.startsWith('/verification')) {
+      window.location.href = '/verification/';
+    }
+    if (_user.role === 'CONTRIBUABLE') {
+      Api.logout();
+    }
+
+    const nav   = document.getElementById('sidebar-nav');
+    const items = NAV_CONFIG[_user.role] || [];
+    const path  = window.location.pathname;
+
+    nav.innerHTML = items.map(item => {
+      if (item.section) {
+        return `<div class="sidebar-section">${item.section}</div>`;
+      }
+      const active = path.startsWith(item.href) ? 'active' : '';
+      const badge  = item.badge
+        ? `<span class="badge ms-auto" style="background:rgba(224,93,38,0.25);color:#E05D26;font-size:0.58rem;">${item.badge}</span>`
+        : '';
+      const target = item.target ? `target="${item.target}"` : '';
+      return `<a href="${item.href}" class="nav-item ${active}" ${target}>
+        <i class="bi bi-${item.icon}"></i> ${item.label}${badge}
+      </a>`;
+    }).join('');
+  }
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

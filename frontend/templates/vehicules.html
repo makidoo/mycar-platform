@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Véhicules{% endblock %}
+{% block page_title %}<i class="bi bi-car-front me-2"></i>Véhicules{% endblock %}
+{% block nav_vehicules %}active{% endblock %}
+
+{% block content %}
+<!-- Filtres -->
+<div class="filter-bar mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-12 col-md-4">
+      <label class="form-label">Recherche</label>
+      <div class="input-group">
+        <span class="input-group-text"><i class="bi bi-search text-muted"></i></span>
+        <input type="text" id="search" class="form-control" placeholder="Immatriculation, nom, marque…">
+      </div>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">Statut</label>
+      <select id="filter-statut" class="form-select">
+        <option value="">Tous</option>
+        <option value="VERT">Vert</option>
+        <option value="ORANGE">Orange</option>
+        <option value="ROUGE">Rouge</option>
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label">Type</label>
+      <select id="filter-type" class="form-select">
+        <option value="">Tous</option>
+        <option value="VEHICULE">Véhicule</option>
+        <option value="MOTO">Moto</option>
+      </select>
+    </div>
+    <div class="col-6 col-md-2" id="region-filter-col">
+      <label class="form-label">Région</label>
+      <select id="filter-region" class="form-select">
+        <option value="">Toutes</option>
+      </select>
+    </div>
+    <div class="col-6 col-md-2 d-flex gap-2">
+      <button class="btn btn-primary-custom flex-fill" onclick="loadVehicules()">
+        <i class="bi bi-funnel me-1"></i>Filtrer
+      </button>
+      <button class="btn btn-outline-secondary" onclick="resetFiltres()" title="Réinitialiser">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Tableau -->
+<div class="table-card">
+  <div class="d-flex align-items-center justify-content-between p-3 border-bottom">
+    <div class="section-title mb-0">
+      Liste des véhicules — <span id="count-label" class="text-muted fw-normal">…</span>
+    </div>
+    <a href="/saisie/" class="btn btn-primary-custom btn-sm">
+      <i class="bi bi-plus-lg me-1"></i>Nouveau
+    </a>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Immatriculation</th>
+          <th>Propriétaire</th>
+          <th>Région</th>
+          <th>Type</th>
+          <th>Marque / Modèle</th>
+          <th>Taxe (FCFA)</th>
+          <th>Statut</th>
+          <th>Expiration</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="vehicules-tbody">
+        <tr><td colspan="9" class="text-center text-muted py-4">Chargement…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination -->
+  <div class="d-flex align-items-center justify-content-between px-3 py-2 border-top" id="pagination-bar">
+    <span class="text-muted small" id="page-info"></span>
+    <div class="d-flex gap-2">
+      <button class="btn btn-sm btn-outline-secondary" id="btn-prev" onclick="changePage(-1)" disabled>
+        <i class="bi bi-chevron-left"></i>
+      </button>
+      <button class="btn btn-sm btn-outline-secondary" id="btn-next" onclick="changePage(1)" disabled>
+        <i class="bi bi-chevron-right"></i>
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPage = 1;
+let totalCount = 0;
+const PAGE_SIZE = 10;
+
+async function loadVehicules() {
+  const tbody = document.getElementById('vehicules-tbody');
+  tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm me-2"></span>Chargement…</td></tr>';
+
+  const search = document.getElementById('search').value;
+  const statut = document.getElementById('filter-statut').value;
+  const type   = document.getElementById('filter-type').value;
+  const region = document.getElementById('filter-region')?.value;
+
+  const params = new URLSearchParams({ page: currentPage, page_size: PAGE_SIZE });
+  if (search) params.set('search', search);
+  if (statut) params.set('statut', statut);
+  if (type)   params.set('type_vehicule', type);
+  if (region) params.set('region', region);
+
+  const data = await Api.get(`/automobiles/?${params}`);
+  if (!data) return;
+
+  totalCount = data.count || 0;
+  document.getElementById('count-label').textContent = `${totalCount} résultat${totalCount !== 1 ? 's' : ''}`;
+  document.getElementById('page-info').textContent = `Page ${currentPage} sur ${Math.ceil(totalCount / PAGE_SIZE) || 1}`;
+  document.getElementById('btn-prev').disabled = !data.previous;
+  document.getElementById('btn-next').disabled = !data.next;
+
+  if (!data.results?.length) {
+    tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><i class="bi bi-inbox"></i>Aucun véhicule trouvé</div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = data.results.map(a => `
+    <tr style="cursor:pointer;" onclick="window.location='/vehicules/${a.id}/'">
+      <td><strong class="text-primary">${a.immatriculation}</strong></td>
+      <td>${a.nom} ${a.prenom}</td>
+      <td>${a.region?.nom_region || '—'}</td>
+      <td>
+        <span class="badge bg-light text-dark border">
+          <i class="bi bi-${a.type_vehicule === 'MOTO' ? 'bicycle' : 'car-front'} me-1"></i>${a.type_vehicule}
+        </span>
+      </td>
+      <td>${a.marque} ${a.modele || ''}</td>
+      <td>${Number(a.montant_taxe).toLocaleString('fr-FR')}</td>
+      <td>${statutBadge(a.statut_actuel?.statut)}</td>
+      <td class="text-muted small">${formatDate(a.statut_actuel?.date_fin_validite)}</td>
+      <td>
+        <a href="/vehicules/${a.id}/" class="btn btn-sm btn-outline-secondary py-0" onclick="event.stopPropagation()">
+          <i class="bi bi-eye"></i>
+        </a>
+      </td>
+    </tr>`).join('');
+}
+
+function changePage(dir) {
+  currentPage = Math.max(1, currentPage + dir);
+  loadVehicules();
+}
+
+function resetFiltres() {
+  document.getElementById('search').value = '';
+  document.getElementById('filter-statut').value = '';
+  document.getElementById('filter-type').value = '';
+  const regionEl = document.getElementById('filter-region');
+  if (regionEl) regionEl.value = '';
+  currentPage = 1;
+  loadVehicules();
+}
+
+async function loadRegions() {
+  const data = await Api.get('/regions/');
+  if (!data?.results) return;
+  const sel = document.getElementById('filter-region');
+  data.results.forEach(r => {
+    sel.innerHTML += `<option value="${r.nom_region}">${r.nom_region}</option>`;
+  });
+}
+
+// Recherche live
+let searchTimer;
+document.getElementById('search').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { currentPage = 1; loadVehicules(); }, 400);
+});
+
+// Restriction Agent DGI
+const _u = Api.getUser();
+if (_u?.role === 'AGENT_DGI' && _u?.region_nom) {
+  // Masquer le filtre région (l'agent ne peut pas changer de région)
+  document.getElementById('region-filter-col').innerHTML = `
+    <label class="form-label">Région</label>
+    <div class="form-control bg-light text-muted d-flex align-items-center gap-2">
+      <i class="bi bi-geo-alt-fill text-primary"></i>
+      <strong>${_u.region_nom}</strong>
+    </div>`;
+} else {
+  loadRegions();
+}
+
+loadVehicules();
+</script>
+{% endblock %}

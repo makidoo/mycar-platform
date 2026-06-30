@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Fiche véhicule{% endblock %}
+{% block page_title %}<i class="bi bi-card-text me-2"></i>Fiche véhicule{% endblock %}
+{% block nav_vehicules %}active{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+  <a href="/vehicules/" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Retour à la liste
+  </a>
+</div>
+
+<div id="main-content">
+  <div class="text-center py-5 text-muted">
+    <span class="spinner-border me-2"></span>Chargement…
+  </div>
+</div>
+
+<!-- Modal modifier statut -->
+<div class="modal fade" id="modal-statut" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>Modifier le statut</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Nouveau statut</label>
+          <select id="modal-nouveau-statut" class="form-select">
+            <option value="VERT">🟢 VERT — Valide</option>
+            <option value="ORANGE">🟠 ORANGE — Échéance imminente</option>
+            <option value="ROUGE">🔴 ROUGE — Expiré</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Code sécurité</label>
+          <div class="input-group">
+            <input type="text" id="modal-code" class="form-control font-monospace"
+                   placeholder="XXXX-XXXX-XXXX-XXXX" style="letter-spacing:1px;">
+            <button class="btn btn-outline-primary" type="button" id="btn-gen-code" onclick="genererCode()">
+              <i class="bi bi-key me-1"></i>Générer
+            </button>
+          </div>
+          <div class="form-text" id="code-hint">Générez un code ou saisissez celui fourni par votre superviseur.</div>
+        </div>
+        <!-- Encadré code généré -->
+        <div id="code-genere-box" class="d-none p-3 rounded mb-3"
+             style="background:#eff6ff; border:1.5px solid #bfdbfe;">
+          <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-check-circle-fill text-primary"></i>
+            <div>
+              <div class="small text-muted">Code généré (usage unique)</div>
+              <div class="fw-bold font-monospace fs-5" id="code-genere-value">—</div>
+            </div>
+          </div>
+          <div class="small text-muted mt-1">
+            <i class="bi bi-exclamation-triangle me-1 text-warning"></i>
+            Ce code est valable pour cette modification uniquement.
+          </div>
+        </div>
+        <div id="modal-alert" class="alert alert-danger d-none py-2 small"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button class="btn btn-primary-custom" id="btn-confirm-statut" onclick="confirmerStatut()">
+          <i class="bi bi-check-lg me-1"></i>Confirmer
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const vehicleId = window.location.pathname.replace(/\/$/, '').split('/').pop();
+let vehicleData = null;
+const modalStatut = new bootstrap.Modal(document.getElementById('modal-statut'));
+
+async function loadVehicle() {
+  const [auto, qr] = await Promise.all([
+    Api.get(`/automobiles/${vehicleId}/`),
+    Api.get(`/automobiles/${vehicleId}/generer_qr/`),
+  ]);
+
+  if (!auto) {
+    document.getElementById('main-content').innerHTML =
+      '<div class="alert alert-danger">Véhicule introuvable.</div>';
+    return;
+  }
+
+  vehicleData = auto;
+  const s = auto.statut_actuel;
+  const statutClass = { VERT: 'vert', ORANGE: 'orange', ROUGE: 'rouge' }[s?.statut] || 'rouge';
+  const statutIcon  = { VERT: 'check-circle-fill', ORANGE: 'exclamation-circle-fill', ROUGE: 'x-circle-fill' }[s?.statut] || 'x-circle-fill';
+
+  document.getElementById('main-content').innerHTML = `
+    <div class="row g-3">
+      <!-- Colonne gauche : infos + QR -->
+      <div class="col-lg-4">
+        <!-- Statut card -->
+        <div class="stat-card bg-${statutClass} mb-3 text-center">
+          <div style="font-size:3rem;"><i class="bi bi-${statutIcon}"></i></div>
+          <div class="stat-value">${s?.statut || 'INCONNU'}</div>
+          <div class="stat-label">
+            Valide jusqu'au ${formatDate(s?.date_fin_validite)}
+          </div>
+        </div>
+
+        <!-- QR Code -->
+        <div class="card p-3 mb-3">
+          <div class="section-title">QR Code vignette</div>
+          <div class="qr-box">
+            ${qr?.qr_code_base64
+              ? `<img src="data:image/png;base64,${qr.qr_code_base64}" alt="QR Code" class="img-fluid">`
+              : '<p class="text-muted small">QR non disponible</p>'}
+          </div>
+          ${qr?.qr_code_base64 ? `
+          <a href="data:image/png;base64,${qr.qr_code_base64}" download="QR_${auto.immatriculation}.png"
+             class="btn btn-outline-secondary btn-sm mt-2 w-100">
+            <i class="bi bi-download me-1"></i>Télécharger
+          </a>` : ''}
+        </div>
+
+        <!-- Actions -->
+        <div class="d-grid gap-2">
+          <button class="btn btn-primary-custom" onclick="document.getElementById('modal-statut').querySelector('.modal').style;modalStatut.show()">
+            <i class="bi bi-pencil-square me-2"></i>Modifier le statut
+          </button>
+        </div>
+      </div>
+
+      <!-- Colonne droite : détails -->
+      <div class="col-lg-8">
+        <!-- Identité -->
+        <div class="card p-3 mb-3">
+          <div class="section-title">Informations du véhicule</div>
+          <div class="row g-3">
+            ${infoRow('Immatriculation', `<strong class="text-primary fs-5">${auto.immatriculation}</strong>`)}
+            ${infoRow('Région', auto.region?.nom_region)}
+            ${infoRow('Type', auto.type_vehicule)}
+            ${infoRow('Marque', auto.marque)}
+            ${infoRow('Modèle', auto.modele || '—')}
+            ${infoRow('Énergie', auto.energie || '—')}
+            ${infoRow('Puissance', `${auto.puissance_cv} CV`)}
+            ${infoRow('N° Châssis', `<code>${auto.numero_chassis}</code>`)}
+            ${infoRow('Mise en circulation', formatDate(auto.date_mise_circulation))}
+            ${infoRow('Carte grise', formatDate(auto.date_edition_carte_grise))}
+            ${infoRow('Taxe annuelle', `<strong>${Number(auto.montant_taxe).toLocaleString('fr-FR')} FCFA</strong>`)}
+          </div>
+        </div>
+
+        <!-- Propriétaire -->
+        <div class="card p-3 mb-3">
+          <div class="section-title">Propriétaire</div>
+          <div class="row g-3">
+            ${infoRow('Nom', auto.nom)}
+            ${infoRow('Prénom', auto.prenom)}
+            ${infoRow('Téléphone', auto.telephone)}
+            ${infoRow('Pays', auto.pays)}
+          </div>
+        </div>
+
+        <!-- Historique statuts -->
+        <div class="card p-3">
+          <div class="section-title">Historique des statuts</div>
+          <div id="historique-list">
+            <div class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  // Modifier statut button fix
+  document.querySelector('[onclick*="modalStatut"]').onclick = () => modalStatut.show();
+
+  loadHistorique();
+}
+
+function infoRow(label, value) {
+  return `
+    <div class="col-6">
+      <div class="text-muted small mb-0">${label}</div>
+      <div>${value ?? '—'}</div>
+    </div>`;
+}
+
+async function loadHistorique() {
+  const data = await Api.get(`/automobiles/${vehicleId}/statuts/`);
+  const el = document.getElementById('historique-list');
+  if (!data?.length) {
+    el.innerHTML = '<div class="text-muted small text-center py-2">Aucun historique</div>';
+    return;
+  }
+  el.innerHTML = `<div class="d-flex flex-column gap-2">` +
+    data.map((sv, i) => `
+      <div class="d-flex align-items-center gap-3 p-2 rounded ${i === 0 ? 'bg-light' : ''}">
+        <div>${statutBadge(sv.statut)}</div>
+        <div class="flex-fill">
+          <div class="small fw-semibold">${formatDate(sv.date_debut_validite)} → ${formatDate(sv.date_fin_validite)}</div>
+          <div class="text-muted" style="font-size:0.75rem;">${sv.type_modification} — Code: <code>${sv.code_securite}</code></div>
+        </div>
+        ${i === 0 ? '<span class="badge bg-primary">Actuel</span>' : ''}
+      </div>`).join('') + '</div>';
+}
+
+async function genererCode() {
+  const btn = document.getElementById('btn-gen-code');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+  const result = await Api.post(`/automobiles/${vehicleId}/generer-code/`, {});
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="bi bi-key me-1"></i>Générer';
+
+  if (result?.ok) {
+    const code = result.data.code;
+    document.getElementById('modal-code').value = code;
+    document.getElementById('code-genere-value').textContent = code;
+    document.getElementById('code-genere-box').classList.remove('d-none');
+    document.getElementById('code-hint').textContent = 'Code généré et pré-rempli automatiquement.';
+  } else {
+    document.getElementById('modal-alert').textContent = result?.data?.error || 'Erreur lors de la génération.';
+    document.getElementById('modal-alert').classList.remove('d-none');
+  }
+}
+
+async function confirmerStatut() {
+  const nouveau = document.getElementById('modal-nouveau-statut').value;
+  const code    = document.getElementById('modal-code').value.trim();
+  const alertEl = document.getElementById('modal-alert');
+  const btn     = document.getElementById('btn-confirm-statut');
+
+  if (!code) { alertEl.textContent = 'Veuillez saisir le code sécurité.'; alertEl.classList.remove('d-none'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>En cours…';
+  alertEl.classList.add('d-none');
+
+  const result = await Api.post('/statuts/modifier/', {
+    immatriculation: vehicleData.immatriculation,
+    region: vehicleData.region?.nom_region,
+    code_securite: code,
+    nouveau_statut: nouveau,
+  });
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Confirmer';
+
+  if (result?.ok) {
+    modalStatut.hide();
+    showToast('Statut modifié avec succès !');
+    loadVehicle();
+  } else {
+    alertEl.textContent = result?.data?.error || 'Erreur lors de la modification.';
+    alertEl.classList.remove('d-none');
+  }
+}
+
+loadVehicle();
+</script>
+{% endblock %}

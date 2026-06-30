@@ -1,0 +1,672 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MY CAR — Renouvellement Vignette</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    :root { --primary:#0F766E; --orange:#E05D26; --orange-dark:#C2410C; --vert:#27AE60; --rouge:#C0392B; }
+    body { background:#FDFBF7; font-family:'Segoe UI',system-ui,sans-serif; }
+
+    /* Bandeau institutionnel */
+    .bandeau-officiel {
+      background:white; border-bottom:1px solid #e2e8f0; padding:.5rem 1.2rem;
+      display:flex; align-items:center; justify-content:space-between;
+    }
+    .bandeau-left { display:flex; align-items:center; gap:10px; }
+    .bandeau-logo { height:32px; width:auto; object-fit:contain; }
+    .bandeau-text { font-size:.7rem; color:#64748b; line-height:1.3; }
+    .bandeau-text strong { color:#1e293b; font-weight:600; }
+    .bandeau-dgi {
+      background:var(--primary); color:white; font-size:.65rem; font-weight:700;
+      letter-spacing:.5px; padding:3px 10px; border-radius:4px; text-transform:uppercase;
+    }
+
+    .top-header { background:var(--primary); color:white; padding:1rem 1.5rem; display:flex; align-items:center; justify-content:space-between; }
+    .top-header .brand { font-size:1.2rem; font-weight:800; display:flex; align-items:center; gap:.5rem; }
+    .top-header .brand small { font-size:.65rem; font-weight:400; opacity:.7; display:block; letter-spacing:.5px; }
+    .top-header a { color:rgba(255,255,255,.85) !important; }
+    .top-header a:hover { color:white !important; }
+
+    .step-indicator { display:flex; justify-content:center; gap:.4rem; padding:1rem; }
+    .step-dot { width:10px; height:10px; border-radius:50%; background:#cbd5e1; transition:all .3s; }
+    .step-dot.active { background:var(--orange); transform:scale(1.3); }
+    .step-dot.done   { background:var(--vert); }
+
+    .card { border:none; border-radius:14px; box-shadow:0 2px 8px rgba(0,0,0,.08); }
+    .form-control,.form-select { border-radius:10px; border:1.5px solid #e2e8f0; padding:.65rem .9rem; }
+    .form-control:focus,.form-select:focus { border-color:var(--orange); box-shadow:0 0 0 3px rgba(224,93,38,.12); }
+    .btn-pay { background:var(--orange); border:none; color:white; border-radius:10px; padding:.75rem; font-weight:700; font-size:1rem; width:100%; cursor:pointer; transition:background .15s; }
+    .btn-pay:hover { background:var(--orange-dark); }
+    .btn-pay:disabled { opacity:.6; cursor:not-allowed; }
+
+    .operator-btn { border:2px solid #e2e8f0; border-radius:12px; padding:.75rem; cursor:pointer; text-align:center; transition:all .15s; background:white; }
+    .operator-btn:hover { border-color:var(--primary); background:#ecfdf5; }
+    .operator-btn.selected { border-color:var(--primary); background:#d1fae5; }
+    .operator-btn .op-logo { font-size:1.6rem; margin-bottom:.25rem; }
+    .operator-btn .op-name { font-size:.78rem; font-weight:700; color:#374151; }
+    .operator-btn .op-label { font-size:.68rem; color:#6b7280; }
+
+    .vehicle-header { padding:1.2rem 1.5rem; color:white; font-weight:700; }
+    .vehicle-header.vert   { background:linear-gradient(135deg,#1a7a45,var(--vert)); }
+    .vehicle-header.orange { background:linear-gradient(135deg,var(--orange-dark),var(--orange)); }
+    .vehicle-header.rouge  { background:linear-gradient(135deg,#922b21,var(--rouge)); }
+
+    .info-row { display:flex; justify-content:space-between; align-items:center; padding:.6rem 0; border-bottom:1px solid #f1f5f9; }
+    .info-row:last-child { border-bottom:none; }
+    .info-row .label { color:#6b7280; font-size:.82rem; }
+    .info-row .value { font-weight:600; font-size:.9rem; }
+
+    /* OTP input */
+    .otp-inputs { display:flex; gap:.6rem; justify-content:center; }
+    .otp-inputs input {
+      width:52px; height:62px; text-align:center; font-size:1.6rem; font-weight:700;
+      border:2px solid #e2e8f0; border-radius:12px; outline:none; transition:border-color .15s;
+    }
+    .otp-inputs input:focus { border-color:var(--orange); box-shadow:0 0 0 3px rgba(224,93,38,.12); }
+    .otp-inputs input.filled { border-color:var(--orange); background:#fff1ea; }
+
+    /* Demo badge */
+    .demo-badge { background:#fef3c7; border:1.5px solid #f59e0b; border-radius:10px; padding:.75rem 1rem; }
+    .demo-code  { font-size:2rem; font-weight:800; letter-spacing:.4rem; color:var(--orange); }
+
+    /* Processing */
+    .processing-screen { text-align:center; padding:2.5rem 1rem; }
+    .pulse-circle { width:90px; height:90px; border-radius:50%; background:rgba(224,93,38,.1); display:flex; align-items:center; justify-content:center; margin:0 auto 1.5rem; animation:pulse 1.5s infinite; }
+    .pulse-circle i { font-size:2.5rem; color:var(--orange); }
+    @keyframes pulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.1);opacity:.7} }
+
+    /* Success */
+    .success-screen { text-align:center; }
+    .success-icon { font-size:5rem; color:var(--vert); animation:popIn .4s ease; }
+    @keyframes popIn { from{transform:scale(0)} to{transform:scale(1)} }
+    .qr-box { background:white; border-radius:12px; padding:1rem; display:inline-block; box-shadow:0 2px 8px rgba(0,0,0,.1); }
+    .qr-box img { max-width:200px; border-radius:8px; }
+
+    /* Countdown */
+    .countdown { font-size:.82rem; color:#6b7280; }
+    .countdown span { font-weight:700; color:var(--primary); }
+
+    .step { display:none; }
+    .step.active { display:block; animation:fadeIn .2s ease; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+
+    /* Overrides Bootstrap (bleu par défaut → palette DGI) */
+    .text-primary { color: var(--orange) !important; }
+    .btn-outline-primary { color: var(--primary) !important; border-color: var(--primary) !important; }
+    .btn-outline-primary:hover { background: var(--primary) !important; color: white !important; }
+    .progress-bar.bg-primary { background-color: var(--orange) !important; }
+  </style>
+</head>
+<body>
+
+<div class="bandeau-officiel">
+  <div class="bandeau-left">
+    <img src="{% static 'images/logo-dgi.png' %}" alt="Logo DGI" class="bandeau-logo">
+    <div class="bandeau-text">
+      <strong>République du Niger</strong><br>
+      Ministère des Finances — Direction Générale des Impôts
+    </div>
+  </div>
+  <div class="bandeau-dgi">DGI</div>
+</div>
+
+<div class="top-header">
+  <div class="brand">
+    <i class="bi bi-car-front-fill"></i>
+    <div>MY CAR <small>Portail citoyen</small></div>
+  </div>
+  <a href="/" class="text-decoration-none small"><i class="bi bi-person-badge me-1"></i>Espace DGI</a>
+</div>
+
+<div class="text-center py-3 px-3">
+  <h5 class="fw-bold mb-0" style="color:var(--primary);">Renouvellement de Vignette</h5>
+  <p class="text-muted small mb-0">Payez votre vignette en quelques clics</p>
+</div>
+
+<div class="step-indicator">
+  <div class="step-dot" id="dot-1"></div>
+  <div class="step-dot" id="dot-2"></div>
+  <div class="step-dot" id="dot-3"></div>
+  <div class="step-dot" id="dot-4"></div>
+  <div class="step-dot" id="dot-5"></div>
+  <div class="step-dot" id="dot-6"></div>
+</div>
+
+<div class="container" style="max-width:540px; padding-bottom:2rem;">
+
+  <!-- ÉTAPE 1 : Recherche -->
+  <div class="step active" id="step-1">
+    <div class="card p-4">
+      <div class="text-center mb-3">
+        <i class="bi bi-car-front-fill" style="font-size:2.2rem; color:var(--primary);"></i>
+        <h6 class="mt-2 fw-bold">Trouver mon véhicule</h6>
+        <p class="text-muted small">Saisissez votre numéro d'immatriculation</p>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Immatriculation <span class="text-danger">*</span></label>
+        <input type="text" id="input-immat" class="form-control form-control-lg text-uppercase text-center fw-bold"
+               placeholder="NIA-001-A" style="letter-spacing:2px; font-size:1.2rem;" autocomplete="off">
+      </div>
+      <div class="mb-4">
+        <label class="form-label fw-semibold">Région</label>
+        <select id="input-region" class="form-select">
+          <option value="">Toutes les régions</option>
+        </select>
+      </div>
+      <div id="search-error" class="alert alert-danger d-none py-2 small"></div>
+      <button class="btn-pay" id="btn-search" onclick="demanderOTP()">
+        <i class="bi bi-shield-lock me-2"></i>Envoyer le code de vérification
+      </button>
+    </div>
+    <p class="text-center text-muted small mt-3">
+      <i class="bi bi-lock-fill me-1"></i>Vos données sont protégées — un code SMS vous sera envoyé pour confirmer votre identité
+    </p>
+  </div>
+
+  <!-- ÉTAPE 2 : Vérification OTP -->
+  <div class="step" id="step-2">
+    <div class="card p-4">
+      <div class="text-center mb-4">
+        <i class="bi bi-phone-fill" style="font-size:2.2rem; color:var(--primary);"></i>
+        <h6 class="mt-2 fw-bold">Vérification par SMS</h6>
+        <p class="text-muted small mb-0">
+          Un code à 6 chiffres a été envoyé au<br>
+          <strong id="tel-masque" class="text-primary">—</strong>
+        </p>
+      </div>
+
+      <!-- Encadré démo -->
+      <div class="demo-badge mb-4 text-center">
+        <div class="small text-warning fw-semibold mb-1"><i class="bi bi-exclamation-triangle me-1"></i>Mode démo — code visible</div>
+        <div class="demo-code" id="demo-code-display">------</div>
+        <div style="font-size:.7rem; color:#92400e;">En production, ce code serait envoyé uniquement par SMS</div>
+      </div>
+
+      <label class="form-label fw-semibold text-center d-block">Entrez votre code</label>
+      <div class="otp-inputs mb-3" id="otp-inputs">
+        <input type="tel" maxlength="1" class="otp-digit">
+        <input type="tel" maxlength="1" class="otp-digit">
+        <input type="tel" maxlength="1" class="otp-digit">
+        <input type="tel" maxlength="1" class="otp-digit">
+        <input type="tel" maxlength="1" class="otp-digit">
+        <input type="tel" maxlength="1" class="otp-digit">
+      </div>
+
+      <div class="text-center mb-3 countdown">
+        Code valide pendant <span id="countdown">10:00</span>
+      </div>
+
+      <div id="otp-error" class="alert alert-danger d-none py-2 small mb-3"></div>
+
+      <button class="btn-pay mb-2" id="btn-verify" onclick="verifierOTP()">
+        <i class="bi bi-check-circle me-2"></i>Vérifier le code
+      </button>
+      <button class="btn btn-outline-secondary w-100" onclick="goStep(1)">
+        <i class="bi bi-arrow-left me-1"></i>Modifier l'immatriculation
+      </button>
+
+      <div class="text-center mt-3">
+        <button class="btn btn-link btn-sm text-muted" id="btn-resend" onclick="demanderOTP(true)" disabled>
+          <i class="bi bi-arrow-clockwise me-1"></i>Renvoyer le code
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÉTAPE 3 : Fiche véhicule -->
+  <div class="step" id="step-3">
+    <div class="card mb-3" style="border-radius:14px; overflow:hidden;">
+      <div class="vehicle-header" id="vehicle-status-header">
+        <div class="d-flex align-items-center gap-2">
+          <i class="bi bi-car-front-fill fs-4"></i>
+          <div>
+            <div id="vh-immat" style="font-size:1.3rem;">—</div>
+            <div style="font-weight:400; font-size:.82rem; opacity:.9;" id="vh-region">—</div>
+          </div>
+        </div>
+        <div class="mt-2 d-flex align-items-center gap-2">
+          <i class="bi" id="vh-statut-icon" style="font-size:1.5rem;"></i>
+          <div>
+            <div id="vh-statut-label" style="font-size:1rem;"></div>
+            <div id="vh-expiration" style="font-size:.8rem; opacity:.85;"></div>
+          </div>
+        </div>
+      </div>
+      <div class="p-3">
+        <div class="info-row">
+          <span class="label">Propriétaire</span>
+          <span class="value" id="vh-proprietaire">—</span>
+        </div>
+        <div class="info-row">
+          <span class="label">Véhicule</span>
+          <span class="value" id="vh-marque">—</span>
+        </div>
+        <div class="info-row">
+          <span class="label">Type</span>
+          <span class="value" id="vh-type">—</span>
+        </div>
+        <div class="info-row">
+          <span class="label">Montant de la vignette</span>
+          <strong class="text-primary fs-5" id="vh-montant">—</strong>
+        </div>
+      </div>
+    </div>
+
+    <div class="card p-3 mb-3" style="background:#fff8e1; border:1.5px solid #f59e0b;">
+      <div class="d-flex gap-2 align-items-start">
+        <i class="bi bi-info-circle-fill text-warning mt-1"></i>
+        <div class="small">Le paiement renouvelle votre vignette pour <strong>une année complète</strong> à compter d'aujourd'hui.</div>
+      </div>
+    </div>
+
+    <button class="btn-pay" onclick="goStep(4)">
+      <i class="bi bi-credit-card me-2"></i>Payer ma vignette
+    </button>
+  </div>
+
+  <!-- ÉTAPE 4 : Choix opérateur + téléphone -->
+  <div class="step" id="step-4">
+    <div class="card p-4 mb-3">
+      <h6 class="fw-bold mb-3">Choisir le moyen de paiement</h6>
+      <div class="row g-2 mb-4">
+        <div class="col-6">
+          <div class="operator-btn" onclick="selectOperator('NITA', this)">
+            <div class="op-logo">🟦</div>
+            <div class="op-name">NITA</div>
+            <div class="op-label">Niger Interbank</div>
+          </div>
+        </div>
+        <div class="col-6">
+          <div class="operator-btn" onclick="selectOperator('AMANATA', this)">
+            <div class="op-logo">🟩</div>
+            <div class="op-name">Amanata</div>
+            <div class="op-label">Sahel Mobile Money</div>
+          </div>
+        </div>
+        <div class="col-6">
+          <div class="operator-btn" onclick="selectOperator('ORANGE_MONEY', this)">
+            <div class="op-logo">🟧</div>
+            <div class="op-name">ZamaniCash</div>
+            <div class="op-label">Niger</div>
+          </div>
+        </div>
+        <div class="col-6">
+          <div class="operator-btn" onclick="selectOperator('AIRTEL_MONEY', this)">
+            <div class="op-logo">🟥</div>
+            <div class="op-name">Airtel Money</div>
+            <div class="op-label">Airtel Niger</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mb-4">
+        <label class="form-label fw-semibold">Numéro Mobile Money <span class="text-danger">*</span></label>
+        <div class="input-group">
+          <span class="input-group-text fw-bold">+227</span>
+          <input type="tel" id="input-telephone" class="form-control form-control-lg" placeholder="90 00 00 00" maxlength="12">
+        </div>
+        <div class="form-text">Le débit sera effectué sur ce numéro.</div>
+      </div>
+
+      <div class="d-flex justify-content-between align-items-center p-3 rounded mb-3"
+           style="background:#f8fafc; border:1.5px solid #e2e8f0;">
+        <span class="text-muted">Montant à payer</span>
+        <strong class="fs-5 text-primary" id="recap-montant">—</strong>
+      </div>
+
+      <div id="pay-error" class="alert alert-danger d-none py-2 small"></div>
+      <button class="btn-pay mb-2" onclick="initierPaiement()">
+        <i class="bi bi-send me-2"></i>Envoyer la demande de paiement
+      </button>
+      <button class="btn btn-outline-secondary w-100" onclick="goStep(3)">
+        <i class="bi bi-arrow-left me-1"></i>Retour
+      </button>
+    </div>
+  </div>
+
+  <!-- ÉTAPE 5 : Traitement -->
+  <div class="step" id="step-5">
+    <div class="card p-4">
+      <div class="processing-screen">
+        <div class="pulse-circle"><i class="bi bi-phone"></i></div>
+        <h5 class="fw-bold mb-2">Demande envoyée !</h5>
+        <p class="text-muted" id="processing-msg">Vérifiez votre téléphone et confirmez le paiement.</p>
+        <div class="my-4 p-3 rounded" style="background:#f8fafc;">
+          <div class="small text-muted mb-1">Référence</div>
+          <div class="fw-bold font-monospace" id="ref-display">—</div>
+        </div>
+        <div class="progress mb-3" style="height:8px; border-radius:4px;">
+          <div class="progress-bar bg-primary progress-bar-striped progress-bar-animated"
+               id="progress-bar" style="width:0%; transition:width .5s;"></div>
+        </div>
+        <p class="text-muted small" id="progress-label">En attente de confirmation…</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÉTAPE 6 : Succès -->
+  <div class="step" id="step-6">
+    <div class="card p-4">
+      <div class="success-screen">
+        <div class="success-icon mb-2"><i class="bi bi-check-circle-fill"></i></div>
+        <h4 class="fw-bold text-success">Paiement confirmé !</h4>
+        <p class="text-muted">Votre vignette a été renouvelée avec succès.</p>
+
+        <div class="p-3 rounded mb-3" style="background:#d1fae5; border:1.5px solid #6ee7b7;">
+          <div class="row g-2 text-start">
+            <div class="col-6">
+              <div class="text-muted small">Référence</div>
+              <div class="fw-bold small font-monospace" id="success-ref">—</div>
+            </div>
+            <div class="col-6">
+              <div class="text-muted small">Opérateur</div>
+              <div class="fw-bold small" id="success-op">—</div>
+            </div>
+            <div class="col-6">
+              <div class="text-muted small">Montant payé</div>
+              <div class="fw-bold" id="success-montant">—</div>
+            </div>
+            <div class="col-6">
+              <div class="text-muted small">Valide jusqu'au</div>
+              <div class="fw-bold" id="success-expiry">—</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="small text-muted fw-semibold mb-2">Votre QR code vignette</div>
+        <div class="qr-box mb-3">
+          <img id="success-qr" src="" alt="QR Code vignette">
+        </div>
+
+        <div class="d-grid gap-2">
+          <a id="btn-download-qr" href="#" download="vignette.png" class="btn btn-success">
+            <i class="bi bi-download me-2"></i>Télécharger le QR code
+          </a>
+          <button class="btn btn-outline-primary" onclick="recommencer()">
+            <i class="bi bi-arrow-repeat me-2"></i>Nouveau renouvellement
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const API = '/api/v1';
+let vehicleData   = null;
+let sessionToken  = null;
+let selectedOperator = null;
+let currentRef    = null;
+let otpId         = null;
+let countdownTimer = null;
+
+// ── Navigation ────────────────────────────────────────────────
+function goStep(n) {
+  document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
+  document.getElementById(`step-${n}`).classList.add('active');
+  const total = 6;
+  document.querySelectorAll('.step-dot').forEach((d, i) => {
+    d.classList.toggle('done',   i + 1 < n);
+    d.classList.toggle('active', i + 1 === n);
+  });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ── Régions ───────────────────────────────────────────────────
+async function loadRegions() {
+  const r = await fetch(`${API}/regions/`);
+  if (!r.ok) return;
+  const data = await r.json();
+  const sel = document.getElementById('input-region');
+  (data.results || data).forEach(reg => {
+    sel.innerHTML += `<option value="${reg.nom_region}">${reg.nom_region}</option>`;
+  });
+}
+
+// ── OTP inputs navigation ─────────────────────────────────────
+document.querySelectorAll('.otp-digit').forEach((input, i, all) => {
+  input.addEventListener('input', e => {
+    const v = e.target.value.replace(/\D/g, '');
+    e.target.value = v.slice(-1);
+    e.target.classList.toggle('filled', !!e.target.value);
+    if (e.target.value && i < all.length - 1) all[i + 1].focus();
+    if (getOTPCode().length === 6) verifierOTP();
+  });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Backspace' && !e.target.value && i > 0) all[i - 1].focus();
+  });
+});
+
+function getOTPCode() {
+  return [...document.querySelectorAll('.otp-digit')].map(i => i.value).join('');
+}
+
+function clearOTPInputs() {
+  document.querySelectorAll('.otp-digit').forEach(i => { i.value = ''; i.classList.remove('filled'); });
+  document.querySelectorAll('.otp-digit')[0].focus();
+}
+
+// ── Countdown ─────────────────────────────────────────────────
+function startCountdown(seconds = 600) {
+  clearInterval(countdownTimer);
+  const el = document.getElementById('countdown');
+  const resendBtn = document.getElementById('btn-resend');
+  resendBtn.disabled = true;
+  let remaining = seconds;
+  countdownTimer = setInterval(() => {
+    remaining--;
+    const m = Math.floor(remaining / 60).toString().padStart(2, '0');
+    const s = (remaining % 60).toString().padStart(2, '0');
+    el.textContent = `${m}:${s}`;
+    if (remaining <= 0) {
+      clearInterval(countdownTimer);
+      el.textContent = '00:00';
+      el.style.color = 'var(--rouge)';
+      resendBtn.disabled = false;
+    }
+  }, 1000);
+}
+
+// ── Étape 1 → 2 : Demander OTP ───────────────────────────────
+document.getElementById('input-immat').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase(); });
+document.getElementById('input-immat').addEventListener('keydown', e => { if (e.key === 'Enter') demanderOTP(); });
+
+async function demanderOTP(resend = false) {
+  const immat  = document.getElementById('input-immat').value.trim();
+  const region = document.getElementById('input-region').value;
+  const errEl  = document.getElementById('search-error');
+  const btn    = document.getElementById('btn-search');
+
+  if (!immat) { errEl.textContent = 'Veuillez saisir une immatriculation.'; errEl.classList.remove('d-none'); return; }
+
+  errEl.classList.add('d-none');
+  if (!resend) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Vérification…'; }
+
+  const r = await fetch(`${API}/public/otp/demander/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ immatriculation: immat, region }),
+  });
+
+  if (!resend) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-shield-lock me-2"></i>Envoyer le code de vérification'; }
+
+  if (!r.ok) {
+    const err = await r.json();
+    errEl.textContent = err.error || 'Véhicule introuvable.';
+    errEl.classList.remove('d-none');
+    return;
+  }
+
+  const data = await r.json();
+  otpId = data.otp_id;
+
+  document.getElementById('tel-masque').textContent = data.telephone_masque;
+  document.getElementById('demo-code-display').textContent = data.demo_code;
+  document.getElementById('otp-error').classList.add('d-none');
+  document.getElementById('countdown').style.color = '';
+
+  clearOTPInputs();
+  startCountdown(data.expires_in || 600);
+  goStep(2);
+}
+
+// ── Étape 2 → 3 : Vérifier OTP ───────────────────────────────
+async function verifierOTP() {
+  const code  = getOTPCode();
+  const errEl = document.getElementById('otp-error');
+  const btn   = document.getElementById('btn-verify');
+
+  if (code.length < 6) { errEl.textContent = 'Entrez les 6 chiffres du code.'; errEl.classList.remove('d-none'); return; }
+
+  errEl.classList.add('d-none');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Vérification…';
+
+  const r = await fetch(`${API}/public/otp/verifier/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ otp_id: otpId, code }),
+  });
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="bi bi-check-circle me-2"></i>Vérifier le code';
+
+  if (!r.ok) {
+    const err = await r.json();
+    errEl.textContent = err.error || 'Code incorrect.';
+    errEl.classList.remove('d-none');
+    clearOTPInputs();
+    return;
+  }
+
+  clearInterval(countdownTimer);
+  const data = await r.json();
+  sessionToken = data.session_token;
+  vehicleData  = data.vehicule;
+
+  afficherVehicule();
+  goStep(3);
+}
+
+// ── Affichage fiche ───────────────────────────────────────────
+function afficherVehicule() {
+  const v = vehicleData;
+  const cls   = { VERT: 'vert', ORANGE: 'orange', ROUGE: 'rouge' }[v.statut] || 'rouge';
+  const icons = { VERT: 'check-circle-fill', ORANGE: 'exclamation-circle-fill', ROUGE: 'x-circle-fill' };
+  const msgs  = { VERT: 'Vignette valide', ORANGE: 'Renouvellement recommandé', ROUGE: 'Vignette expirée' };
+
+  document.getElementById('vehicle-status-header').className = `vehicle-header ${cls}`;
+  document.getElementById('vh-immat').textContent    = v.immatriculation;
+  document.getElementById('vh-region').textContent   = v.region;
+  document.getElementById('vh-statut-icon').className = `bi bi-${icons[v.statut] || 'x-circle-fill'}`;
+  document.getElementById('vh-statut-label').textContent = msgs[v.statut] || v.statut;
+  document.getElementById('vh-expiration').textContent =
+    v.date_fin_validite ? `Expire le ${new Date(v.date_fin_validite).toLocaleDateString('fr-FR')}` : 'Non définie';
+  document.getElementById('vh-proprietaire').textContent = v.proprietaire;
+  document.getElementById('vh-marque').textContent   = v.marque;
+  document.getElementById('vh-type').textContent     = v.type_vehicule;
+  document.getElementById('vh-montant').textContent  = `${Number(v.montant_taxe).toLocaleString('fr-FR')} FCFA`;
+  document.getElementById('recap-montant').textContent = `${Number(v.montant_taxe).toLocaleString('fr-FR')} FCFA`;
+}
+
+// ── Opérateur ─────────────────────────────────────────────────
+function selectOperator(code, el) {
+  document.querySelectorAll('.operator-btn').forEach(b => b.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedOperator = code;
+}
+
+// ── Étape 4 → 5 : Paiement ───────────────────────────────────
+async function initierPaiement() {
+  const errEl = document.getElementById('pay-error');
+  const tel   = document.getElementById('input-telephone').value.trim();
+
+  if (!selectedOperator) { errEl.textContent = 'Veuillez choisir un opérateur.'; errEl.classList.remove('d-none'); return; }
+  if (!tel) { errEl.textContent = 'Veuillez saisir votre numéro Mobile Money.'; errEl.classList.remove('d-none'); return; }
+
+  errEl.classList.add('d-none');
+
+  const r = await fetch(`${API}/public/paiement/initier/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_token: sessionToken, operateur: selectedOperator, telephone: `+227${tel}` }),
+  });
+
+  if (!r.ok) {
+    const err = await r.json();
+    errEl.textContent = err.error || 'Erreur lors du paiement.';
+    errEl.classList.remove('d-none');
+    return;
+  }
+
+  const data = await r.json();
+  currentRef = data.reference;
+  const opLabels = { NITA:'NITA', AMANATA:'Amanata', ORANGE_MONEY:'ZamaniCash', AIRTEL_MONEY:'Airtel Money' };
+  document.getElementById('ref-display').textContent = currentRef;
+  document.getElementById('processing-msg').textContent =
+    `Confirmez le paiement sur votre téléphone ${tel} (${opLabels[selectedOperator]}).`;
+  document.getElementById('progress-bar').style.width = '0%';
+
+  goStep(5);
+  simulerConfirmation();
+}
+
+// ── Simulation confirmation ───────────────────────────────────
+function simulerConfirmation() {
+  const bar   = document.getElementById('progress-bar');
+  const label = document.getElementById('progress-label');
+  [
+    { pct: 20, msg: 'Connexion à l\'opérateur…',   delay: 800  },
+    { pct: 45, msg: 'Vérification du compte…',      delay: 1800 },
+    { pct: 70, msg: 'Débit en cours…',              delay: 3000 },
+    { pct: 90, msg: 'Confirmation du paiement…',    delay: 4200 },
+    { pct: 100, msg: 'Paiement confirmé !',         delay: 5200 },
+  ].forEach(s => setTimeout(() => { bar.style.width=`${s.pct}%`; label.textContent=s.msg; }, s.delay));
+
+  setTimeout(async () => {
+    const r = await fetch(`${API}/public/paiement/${currentRef}/confirmer/`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+    });
+    if (!r.ok) {
+      label.textContent = 'Paiement échoué. Veuillez réessayer.';
+      bar.classList.replace('bg-primary', 'bg-danger');
+      return;
+    }
+    afficherSucces(await r.json());
+    goStep(6);
+  }, 5800);
+}
+
+function afficherSucces(data) {
+  const opLabels = { NITA:'NITA', AMANATA:'Amanata', ORANGE_MONEY:'ZamaniCash', AIRTEL_MONEY:'Airtel Money' };
+  document.getElementById('success-ref').textContent     = data.reference;
+  document.getElementById('success-op').textContent      = opLabels[data.operateur] || data.operateur;
+  document.getElementById('success-montant').textContent = `${Number(data.montant).toLocaleString('fr-FR')} FCFA`;
+  document.getElementById('success-expiry').textContent  = new Date(data.vignette.date_fin).toLocaleDateString('fr-FR');
+  const qrSrc = `data:image/png;base64,${data.qr_code_base64}`;
+  document.getElementById('success-qr').src            = qrSrc;
+  document.getElementById('btn-download-qr').href      = qrSrc;
+  document.getElementById('btn-download-qr').download  = `vignette_${vehicleData?.immatriculation || 'mycar'}.png`;
+}
+
+function recommencer() {
+  vehicleData = selectedOperator = sessionToken = currentRef = otpId = null;
+  clearInterval(countdownTimer);
+  document.getElementById('input-immat').value = '';
+  document.getElementById('input-telephone').value = '';
+  document.getElementById('progress-bar').style.width = '0%';
+  document.querySelectorAll('.operator-btn').forEach(b => b.classList.remove('selected'));
+  goStep(1);
+}
+
+loadRegions();
+goStep(1);
+</script>
+</body>
+</html>

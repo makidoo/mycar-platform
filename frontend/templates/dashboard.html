@@ -1,0 +1,381 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}<i class="bi bi-speedometer2 me-2"></i>Dashboard{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<!-- ── Statuts vignettes ─────────────────────────────────────── -->
+<div class="section-title">Statuts des vignettes</div>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-xl-3">
+    <div class="stat-card bg-total h-100">
+      <div class="stat-icon"><i class="bi bi-car-front-fill"></i></div>
+      <div class="stat-value" id="stat-total">—</div>
+      <div class="stat-label">Total véhicules</div>
+    </div>
+  </div>
+  <div class="col-6 col-xl-3">
+    <div class="stat-card bg-vert h-100">
+      <div class="stat-icon"><i class="bi bi-check-circle-fill"></i></div>
+      <div class="stat-value" id="stat-vert">—</div>
+      <div class="stat-label">Vignettes valides</div>
+    </div>
+  </div>
+  <div class="col-6 col-xl-3">
+    <div class="stat-card bg-orange h-100">
+      <div class="stat-icon"><i class="bi bi-exclamation-circle-fill"></i></div>
+      <div class="stat-value" id="stat-orange">—</div>
+      <div class="stat-label">Échéance imminente</div>
+    </div>
+  </div>
+  <div class="col-6 col-xl-3">
+    <div class="stat-card bg-rouge h-100">
+      <div class="stat-icon"><i class="bi bi-x-circle-fill"></i></div>
+      <div class="stat-value" id="stat-rouge">—</div>
+      <div class="stat-label">Vignettes expirées</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <!-- Donut statuts -->
+  <div class="col-lg-4">
+    <div class="card p-3 h-100">
+      <div class="section-title">Répartition des statuts</div>
+      <div style="max-height:220px;display:flex;align-items:center;justify-content:center;">
+        <canvas id="donut-chart"></canvas>
+      </div>
+      <div class="d-flex justify-content-center gap-3 mt-3" style="font-size:.82rem;">
+        <span><span class="badge badge-vert">VERT</span> <span id="pct-vert">—</span>%</span>
+        <span><span class="badge badge-orange">ORANGE</span> <span id="pct-orange">—</span>%</span>
+        <span><span class="badge badge-rouge">ROUGE</span> <span id="pct-rouge">—</span>%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Véhicules récents -->
+  <div class="col-lg-8">
+    <div class="table-card h-100">
+      <div class="d-flex align-items-center justify-content-between p-3 border-bottom">
+        <div class="section-title mb-0">Véhicules récents</div>
+        <a href="/vehicules/" class="btn btn-sm btn-outline-primary">Voir tout</a>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead><tr><th>Immatriculation</th><th>Propriétaire</th><th>Région</th><th>Statut</th><th></th></tr></thead>
+          <tbody id="recent-tbody">
+            <tr><td colspan="5" class="text-center text-muted py-3">Chargement…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Section financière ───────────────────────────────────── -->
+<div class="d-flex align-items-center justify-content-between mb-3 mt-2">
+  <div class="d-flex align-items-center gap-2">
+    <div class="section-title mb-0"><i class="bi bi-cash-coin me-2"></i>Recettes — Mobile Money</div>
+    <span id="region-badge" class="d-none badge" style="background:#1B3A6B; font-size:.75rem;"></span>
+  </div>
+  <a id="btn-export" href="#" class="btn btn-sm btn-outline-success" onclick="exportCSV(event)">
+    <i class="bi bi-download me-1"></i>Export CSV
+  </a>
+</div>
+
+<!-- Filtres financiers -->
+<div class="filter-bar mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-6 col-md-3">
+      <label class="form-label">Date début</label>
+      <input type="date" id="f-date-debut" class="form-control">
+    </div>
+    <div class="col-6 col-md-3">
+      <label class="form-label">Date fin</label>
+      <input type="date" id="f-date-fin" class="form-control">
+    </div>
+    <div class="col-6 col-md-3" id="f-region-col">
+      <label class="form-label">Région</label>
+      <select id="f-region" class="form-select">
+        <option value="">Toutes</option>
+      </select>
+    </div>
+    <div class="col-6 col-md-3">
+      <label class="form-label">Opérateur</label>
+      <select id="f-operateur" class="form-select">
+        <option value="">Tous</option>
+        <option value="NITA">NITA</option>
+        <option value="AMANATA">Amanata</option>
+        <option value="ORANGE_MONEY">ZamaniCash</option>
+        <option value="AIRTEL_MONEY">Airtel Money</option>
+      </select>
+    </div>
+    <div class="col-12 col-md-12 d-flex gap-2 justify-content-end">
+      <button class="btn btn-outline-secondary btn-sm" onclick="resetFiltresFinanciers()">
+        <i class="bi bi-x-lg"></i> Réinitialiser
+      </button>
+      <button class="btn btn-primary-custom btn-sm" onclick="loadFinancier()">
+        <i class="bi bi-funnel me-1"></i>Appliquer
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- KPI recettes -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="card p-3 text-center">
+      <div class="text-muted small mb-1">Total recettes</div>
+      <div class="fw-bold fs-4 text-primary" id="kpi-recettes">—</div>
+      <div class="text-muted" style="font-size:.72rem;">FCFA</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card p-3 text-center">
+      <div class="text-muted small mb-1">Paiements</div>
+      <div class="fw-bold fs-4 text-primary" id="kpi-paiements">—</div>
+      <div class="text-muted" style="font-size:.72rem;">confirmés</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card p-3 text-center">
+      <div class="text-muted small mb-1">Meilleure région</div>
+      <div class="fw-bold" id="kpi-top-region">—</div>
+      <div class="text-muted small" id="kpi-top-region-val">—</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card p-3 text-center">
+      <div class="text-muted small mb-1">Opérateur principal</div>
+      <div class="fw-bold" id="kpi-top-op">—</div>
+      <div class="text-muted small" id="kpi-top-op-val">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- Graphiques financiers -->
+<div class="row g-3 mb-4">
+  <div class="col-lg-8">
+    <div class="card p-3">
+      <div class="section-title">Recettes par mois (FCFA)</div>
+      <canvas id="bar-mois" height="100"></canvas>
+      <div id="no-data-mois" class="empty-state d-none"><i class="bi bi-bar-chart"></i>Aucun paiement sur cette période</div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card p-3 h-100">
+      <div class="section-title">Par région</div>
+      <canvas id="bar-region" height="200"></canvas>
+      <div id="no-data-region" class="empty-state d-none"><i class="bi bi-geo"></i>Aucune donnée</div>
+    </div>
+  </div>
+</div>
+
+<!-- Tableau derniers paiements -->
+<div class="table-card">
+  <div class="d-flex align-items-center justify-content-between p-3 border-bottom">
+    <div class="section-title mb-0">Derniers paiements confirmés</div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Référence</th>
+          <th>Immatriculation</th>
+          <th>Région</th>
+          <th>Opérateur</th>
+          <th class="text-end">Montant (FCFA)</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody id="paiements-tbody">
+        <tr><td colspan="6" class="text-center text-muted py-3">Chargement…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let donutChart, barMoisChart, barRegionChart;
+
+// ── Statuts vignettes ─────────────────────────────────────────
+async function loadStatuts() {
+  const [stats, autos] = await Promise.all([
+    Api.get('/dashboard/'),
+    Api.get('/automobiles/?page_size=6'),
+  ]);
+  if (!stats) return;
+
+  const total = stats.total || 0;
+  document.getElementById('stat-total').textContent  = total;
+  document.getElementById('stat-vert').textContent   = stats.total_verts  || 0;
+  document.getElementById('stat-orange').textContent = stats.total_oranges || 0;
+  document.getElementById('stat-rouge').textContent  = stats.total_rouges  || 0;
+
+  const pct = v => total ? Math.round(v / total * 100) : 0;
+  document.getElementById('pct-vert').textContent   = pct(stats.total_verts);
+  document.getElementById('pct-orange').textContent = pct(stats.total_oranges);
+  document.getElementById('pct-rouge').textContent  = pct(stats.total_rouges);
+
+  if (donutChart) donutChart.destroy();
+  donutChart = new Chart(document.getElementById('donut-chart'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Valides', 'Imminents', 'Expirés'],
+      datasets: [{ data: [stats.total_verts, stats.total_oranges, stats.total_rouges],
+        backgroundColor: ['#27AE60','#E67E22','#C0392B'], borderWidth: 0 }],
+    },
+    options: { cutout: '68%', plugins: { legend: { display: false } } },
+  });
+
+  if (autos?.results) {
+    const tbody = document.getElementById('recent-tbody');
+    tbody.innerHTML = autos.results.length
+      ? autos.results.map(a => `
+        <tr style="cursor:pointer" onclick="window.location='/vehicules/${a.id}/'">
+          <td><strong class="text-primary">${a.immatriculation}</strong></td>
+          <td>${a.nom} ${a.prenom}</td>
+          <td class="text-muted">${a.region?.nom_region || '—'}</td>
+          <td>${statutBadge(a.statut_actuel?.statut)}</td>
+          <td><a href="/vehicules/${a.id}/" class="btn btn-sm btn-outline-secondary py-0" onclick="event.stopPropagation()"><i class="bi bi-eye"></i></a></td>
+        </tr>`).join('')
+      : '<tr><td colspan="5"><div class="empty-state"><i class="bi bi-inbox"></i>Aucun véhicule</div></td></tr>';
+  }
+}
+
+// ── Dashboard financier ───────────────────────────────────────
+function getParams() {
+  const p = new URLSearchParams();
+  const dd = document.getElementById('f-date-debut')?.value;
+  const df = document.getElementById('f-date-fin')?.value;
+  const r  = document.getElementById('f-region')?.value;
+  const op = document.getElementById('f-operateur')?.value;
+  if (dd) p.set('date_debut', dd);
+  if (df) p.set('date_fin',   df);
+  if (r)  p.set('region', r);
+  if (op) p.set('operateur', op);
+  return p;
+}
+
+async function loadFinancier() {
+  const data = await Api.get(`/dashboard/financier/?${getParams()}`);
+  if (!data) return;
+
+  // KPIs
+  document.getElementById('kpi-recettes').textContent  = Number(data.totaux.recettes).toLocaleString('fr-FR');
+  document.getElementById('kpi-paiements').textContent = data.totaux.paiements;
+
+  const topR = data.par_region[0];
+  document.getElementById('kpi-top-region').textContent     = topR?.region || '—';
+  document.getElementById('kpi-top-region-val').textContent = topR ? `${Number(topR.recettes).toLocaleString('fr-FR')} FCFA` : '';
+
+  const topOp = data.par_operateur[0];
+  const opLabels = { NITA:'NITA', AMANATA:'Amanata', ORANGE_MONEY:'ZamaniCash', AIRTEL_MONEY:'Airtel Money' };
+  document.getElementById('kpi-top-op').textContent     = topOp ? (opLabels[topOp.operateur] || topOp.operateur) : '—';
+  document.getElementById('kpi-top-op-val').textContent = topOp ? `${Number(topOp.recettes).toLocaleString('fr-FR')} FCFA` : '';
+
+  // Graphique par mois
+  const hasMois = data.par_mois.length > 0;
+  document.getElementById('no-data-mois').classList.toggle('d-none', hasMois);
+  document.getElementById('bar-mois').style.display = hasMois ? 'block' : 'none';
+  if (hasMois) {
+    if (barMoisChart) barMoisChart.destroy();
+    barMoisChart = new Chart(document.getElementById('bar-mois'), {
+      type: 'bar',
+      data: {
+        labels:   data.par_mois.map(e => e.mois),
+        datasets: [{ label: 'Recettes (FCFA)', data: data.par_mois.map(e => e.recettes),
+          backgroundColor: '#2563EB', borderRadius: 6 }],
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: { y: { ticks: { callback: v => v.toLocaleString('fr-FR') } } },
+      },
+    });
+  }
+
+  // Graphique par région
+  const hasRegion = data.par_region.length > 0;
+  document.getElementById('no-data-region').classList.toggle('d-none', hasRegion);
+  document.getElementById('bar-region').style.display = hasRegion ? 'block' : 'none';
+  if (hasRegion) {
+    if (barRegionChart) barRegionChart.destroy();
+    barRegionChart = new Chart(document.getElementById('bar-region'), {
+      type: 'bar',
+      data: {
+        labels:   data.par_region.map(e => e.region),
+        datasets: [{ label: 'Recettes', data: data.par_region.map(e => e.recettes),
+          backgroundColor: ['#1B3A6B','#2563EB','#27AE60','#E67E22','#C0392B','#8B5CF6','#06B6D4','#EC4899'],
+          borderRadius: 6 }],
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: { x: { ticks: { callback: v => v.toLocaleString('fr-FR') } } },
+      },
+    });
+  }
+
+  // Tableau paiements
+  const tbody = document.getElementById('paiements-tbody');
+  tbody.innerHTML = data.derniers_paiements.length
+    ? data.derniers_paiements.map(p => `
+      <tr>
+        <td class="font-monospace small">${p.reference}</td>
+        <td><strong>${p.immatriculation}</strong></td>
+        <td class="text-muted">${p.region}</td>
+        <td><span class="badge bg-light text-dark border">${opLabels[p.operateur] || p.operateur}</span></td>
+        <td class="text-end fw-semibold">${Number(p.montant).toLocaleString('fr-FR')}</td>
+        <td class="text-muted small">${p.date}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="6"><div class="empty-state"><i class="bi bi-receipt"></i>Aucun paiement sur cette période</div></td></tr>';
+}
+
+function resetFiltresFinanciers() {
+  document.getElementById('f-date-debut').value = '';
+  document.getElementById('f-date-fin').value   = '';
+  const fRegion = document.getElementById('f-region');
+  if (fRegion) fRegion.value = '';
+  document.getElementById('f-operateur').value  = '';
+  loadFinancier();
+}
+
+function exportCSV(e) {
+  e.preventDefault();
+  const params = getParams();
+  params.set('export', 'csv');
+  window.open(`/api/v1/dashboard/financier/?${params}`, '_blank');
+}
+
+async function loadRegions() {
+  const data = await Api.get('/regions/');
+  if (!data?.results) return;
+  const sel = document.getElementById('f-region');
+  data.results.forEach(r => sel.innerHTML += `<option value="${r.nom_region}">${r.nom_region}</option>`);
+}
+
+// Restriction Agent DGI
+const _u = Api.getUser();
+if (_u?.role === 'AGENT_DGI' && _u?.region_nom) {
+  // Badge région dans le titre
+  const badge = document.getElementById('region-badge');
+  badge.textContent = `📍 ${_u.region_nom}`;
+  badge.classList.remove('d-none');
+
+  // Supprimer le filtre région (inutile, déjà fixé côté serveur)
+  document.getElementById('f-region-col').remove();
+} else {
+  loadRegions();
+}
+
+loadStatuts();
+loadFinancier();
+</script>
+{% endblock %}

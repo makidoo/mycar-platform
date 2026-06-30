@@ -1,0 +1,244 @@
+import uuid
+from django.db import models
+from django.contrib.auth.models import AbstractBaseUser, BaseUserManager
+from django.utils.crypto import get_random_string
+from django.utils import timezone
+
+
+class RoleUtilisateur(models.TextChoices):
+    ADMIN_SYS = 'ADMINISTRATEUR_SYSTEME', 'Administrateur Système'
+    SUP_DGI = 'SUPERVISEUR_DGI', 'Superviseur DGI'
+    AGENT_DGI = 'AGENT_DGI', 'Agent DGI'
+    POLICE = 'POLICE', 'Police'
+    CONTRIBUABLE = 'CONTRIBUABLE', 'Contribuable'
+
+
+class TypeVehicule(models.TextChoices):
+    VEHICULE = 'VEHICULE', 'Véhicule'
+    MOTO = 'MOTO', 'Moto'
+
+
+class Energie(models.TextChoices):
+    ESSENCE = 'ESSENCE', 'Essence'
+    DIESEL = 'DIESEL', 'Diesel'
+
+
+class StatutVignetteChoix(models.TextChoices):
+    VERT = 'VERT', 'Vert - Valide'
+    ORANGE = 'ORANGE', 'Orange - Échéance imminente'
+    ROUGE = 'ROUGE', 'Rouge - Expiré'
+
+
+class TypeModification(models.TextChoices):
+    AUTO = 'AUTOMATIQUE', 'Automatique'
+    MANUELLE = 'MANUELLE', 'Manuelle'
+
+
+class UtilisateurManager(BaseUserManager):
+    def create_user(self, email, password=None, **extra_fields):
+        if not email:
+            raise ValueError('Email obligatoire')
+        email = self.normalize_email(email)
+        user = self.model(email=email, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self, email, password, **extra_fields):
+        extra_fields.setdefault('role', RoleUtilisateur.ADMIN_SYS)
+        return self.create_user(email, password, **extra_fields)
+
+
+class Region(models.Model):
+    nom_region = models.CharField(max_length=50, unique=True)
+
+    def __str__(self):
+        return self.nom_region
+
+
+class Utilisateur(AbstractBaseUser):
+    email = models.EmailField(unique=True)
+    role = models.CharField(max_length=50, choices=RoleUtilisateur.choices)
+    nom = models.CharField(max_length=100)
+    prenom = models.CharField(max_length=100)
+    structure_id = models.IntegerField(null=True, blank=True)
+    region = models.ForeignKey(
+        'Region', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='agents'
+    )
+    est_actif = models.BooleanField(default=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    USERNAME_FIELD = 'email'
+    objects = UtilisateurManager()
+
+    def __str__(self):
+        return f"{self.nom} {self.prenom} ({self.role})"
+
+
+class Automobile(models.Model):
+    immatriculation = models.CharField(max_length=20)
+    pays = models.CharField(max_length=100, default='NIGER')
+    region = models.ForeignKey(Region, on_delete=models.PROTECT)
+    nom = models.CharField(max_length=100)
+    prenom = models.CharField(max_length=100)
+    telephone = models.CharField(max_length=20)
+    type_vehicule = models.CharField(max_length=20, choices=TypeVehicule.choices)
+    marque = models.CharField(max_length=100)
+    modele = models.CharField(max_length=100, blank=True)
+    energie = models.CharField(max_length=20, choices=Energie.choices, null=True)
+    puissance_cv = models.IntegerField()
+    montant_taxe = models.DecimalField(max_digits=10, decimal_places=2)
+    numero_chassis = models.CharField(max_length=50, unique=True)
+    date_mise_circulation = models.DateField(null=True)
+    date_edition_carte_grise = models.DateField(null=True)
+    statut_actuel = models.ForeignKey(
+        'StatutVignette', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='current_auto'
+    )
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [['immatriculation', 'region']]
+
+    def __str__(self):
+        return f"{self.immatriculation} - {self.nom} {self.prenom}"
+
+    def generer_qr_data(self):
+        return {
+            "v": "1.0",
+            "immat": self.immatriculation,
+            "region": self.region.nom_region,
+            "chassis": self.numero_chassis,
+            "proprietaire": f"{self.nom} {self.prenom}",
+            "statut": self.statut_actuel.statut if self.statut_actuel else 'ROUGE',
+            "validite_debut": self.statut_actuel.date_debut_validite.isoformat() if self.statut_actuel else None,
+            "validite_fin": self.statut_actuel.date_fin_validite.isoformat() if self.statut_actuel else None,
+            "montant": float(self.montant_taxe),
+        }
+
+
+class StatutVignette(models.Model):
+    automobile = models.ForeignKey(Automobile, on_delete=models.CASCADE, related_name='statuts')
+    statut = models.CharField(max_length=20, choices=StatutVignetteChoix.choices)
+    date_debut_validite = models.DateField()
+    date_fin_validite = models.DateField()
+    code_securite = models.CharField(max_length=16, unique=True)
+    type_modification = models.CharField(max_length=20, choices=TypeModification.choices)
+    operateur = models.ForeignKey(Utilisateur, null=True, on_delete=models.SET_NULL)
+    mobile_payment_ref = models.CharField(max_length=255, blank=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if not self.code_securite:
+            self.code_securite = get_random_string(16, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.automobile.immatriculation} - {self.statut} ({self.date_fin_validite})"
+
+    @property
+    def est_valide(self):
+        from django.utils import timezone
+        return (
+            self.statut == StatutVignetteChoix.VERT
+            and self.date_fin_validite >= timezone.now().date()
+        )
+
+
+class CodeSecurite(models.Model):
+    code = models.CharField(max_length=19, unique=True)  # format XXXX-XXXX-XXXX-XXXX
+    statut_usage = models.CharField(
+        max_length=20, default='ACTIF',
+        choices=[('ACTIF', 'Actif'), ('UTILISE', 'Utilisé')]
+    )
+    date_generation = models.DateTimeField(auto_now_add=True)
+    automobile = models.ForeignKey(Automobile, on_delete=models.CASCADE, related_name='codes_securite')
+    generateur = models.ForeignKey(Utilisateur, on_delete=models.CASCADE)
+    date_utilisation = models.DateTimeField(null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            raw = get_random_string(16, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
+            self.code = f"{raw[0:4]}-{raw[4:8]}-{raw[8:12]}-{raw[12:16]}"
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.code} ({self.statut_usage})"
+
+
+class OTPVerification(models.Model):
+    automobile      = models.ForeignKey('Automobile', on_delete=models.CASCADE, related_name='otps')
+    code            = models.CharField(max_length=6)
+    session_token   = models.CharField(max_length=64, unique=True, blank=True)
+    date_creation   = models.DateTimeField(auto_now_add=True)
+    date_expiration = models.DateTimeField()
+    est_utilise     = models.BooleanField(default=False)
+
+    def est_valide(self):
+        return not self.est_utilise and timezone.now() < self.date_expiration
+
+    def save(self, *args, **kwargs):
+        if not self.session_token:
+            self.session_token = get_random_string(64, 'abcdefghijklmnopqrstuvwxyz0123456789')
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"OTP {self.automobile.immatriculation} — {'utilisé' if self.est_utilise else 'actif'}"
+
+
+class OperateurPaiement(models.TextChoices):
+    NITA        = 'NITA',         'NITA'
+    AMANATA     = 'AMANATA',      'Amanata'
+    ORANGE      = 'ORANGE_MONEY', 'ZamaniCash'
+    AIRTEL      = 'AIRTEL_MONEY', 'Airtel Money'
+
+
+class StatutPaiement(models.TextChoices):
+    EN_ATTENTE = 'EN_ATTENTE', 'En attente'
+    CONFIRME   = 'CONFIRME',   'Confirmé'
+    ECHOUE     = 'ECHOUE',     'Échoué'
+
+
+class Paiement(models.Model):
+    reference         = models.CharField(max_length=30, unique=True)
+    automobile        = models.ForeignKey(Automobile, on_delete=models.CASCADE, related_name='paiements')
+    otp               = models.OneToOneField('OTPVerification', null=True, blank=True, on_delete=models.SET_NULL, related_name='paiement')
+    montant           = models.DecimalField(max_digits=10, decimal_places=2)
+    operateur         = models.CharField(max_length=20, choices=OperateurPaiement.choices)
+    telephone         = models.CharField(max_length=20)
+    statut            = models.CharField(max_length=20, choices=StatutPaiement.choices, default=StatutPaiement.EN_ATTENTE)
+    date_initiation   = models.DateTimeField(auto_now_add=True)
+    date_confirmation = models.DateTimeField(null=True, blank=True)
+    statut_vignette   = models.ForeignKey(
+        'StatutVignette', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='paiement'
+    )
+
+    def save(self, *args, **kwargs):
+        if not self.reference:
+            self.reference = 'PAY-' + get_random_string(12, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.reference} — {self.automobile.immatriculation} — {self.statut}"
+
+
+class ParametrePlateforme(models.Model):
+    cle         = models.CharField(max_length=100, unique=True)
+    valeur      = models.TextField()
+    description = models.CharField(max_length=255, blank=True)
+
+    def __str__(self):
+        return f"{self.cle} = {self.valeur}"
+
+
+class HistoriqueConsultation(models.Model):
+    utilisateur = models.ForeignKey(Utilisateur, null=True, on_delete=models.SET_NULL)
+    automobile = models.ForeignKey(Automobile, on_delete=models.CASCADE, related_name='historique')
+    date_consultation = models.DateTimeField(auto_now_add=True)
+    action_performee = models.TextField()
+    ip_address = models.GenericIPAddressField(null=True)
+
+    def __str__(self):
+        return f"{self.automobile.immatriculation} - {self.action_performee[:50]}"
