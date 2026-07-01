@@ -136,9 +136,10 @@ async function loadVehicle() {
 
         <!-- Actions -->
         <div class="d-grid gap-2">
+          ${Api.getUser()?.role === 'ADMINISTRATEUR_SYSTEME' ? `
           <a href="/vehicules/${auto.id}/certificat/" class="btn btn-outline-secondary">
             <i class="bi bi-award me-2"></i>Certificat numérique
-          </a>
+          </a>` : ''}
           <button class="btn btn-primary-custom" id="btn-modifier-statut">
             <i class="bi bi-pencil-square me-2"></i>Modifier le statut
           </button>

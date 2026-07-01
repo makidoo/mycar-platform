@@ -13,6 +13,7 @@ from .views import (
     dashboard_superviseur, dashboard_financier, health_check,
     public_demander_otp, public_verifier_otp,
     public_initier_paiement, public_confirmer_paiement,
+    log_inspection_gps,
 )
 
 router = DefaultRouter()
@@ -47,5 +48,6 @@ urlpatterns = [
     path('public/otp/verifier/',                          public_verifier_otp,       name='public_verifier_otp'),
     path('public/paiement/initier/',                      public_initier_paiement,   name='public_initier_paiement'),
     path('public/paiement/<str:reference>/confirmer/',    public_confirmer_paiement, name='public_confirmer_paiement'),
+    path('police/inspection/',                            log_inspection_gps,        name='log_inspection_gps'),
     path('', include(router.urls)),
 ]

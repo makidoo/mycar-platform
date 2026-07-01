@@ -240,6 +240,7 @@ class Paiement(models.Model):
     operateur         = models.CharField(max_length=20, choices=OperateurPaiement.choices)
     telephone         = models.CharField(max_length=20)
     statut            = models.CharField(max_length=20, choices=StatutPaiement.choices, default=StatutPaiement.EN_ATTENTE)
+    duree_annees      = models.IntegerField(default=1)
     date_initiation   = models.DateTimeField(auto_now_add=True)
     date_confirmation = models.DateTimeField(null=True, blank=True)
     statut_vignette   = models.ForeignKey(

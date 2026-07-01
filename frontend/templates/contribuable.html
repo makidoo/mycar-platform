@@ -102,6 +102,15 @@
     .step.active { display:block; animation:fadeIn .2s ease; }
     @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
 
+    .duration-btn { transition: all .15s; }
+    .duration-btn:hover { border-color: var(--primary) !important; background: #ecfdf5; }
+    .duration-btn.selected { border-color: var(--primary) !important; background: #d1fae5; }
+
+    @media print {
+      body > *:not(#recu-print) { display: none !important; }
+      #recu-print { display: block !important; }
+    }
+
     /* Overrides Bootstrap (bleu par défaut → palette DGI) */
     .text-primary { color: var(--orange) !important; }
     .btn-outline-primary { color: var(--primary) !important; border-color: var(--primary) !important; }
@@ -264,10 +273,27 @@
       </div>
     </div>
 
-    <div class="card p-3 mb-3" style="background:#fff8e1; border:1.5px solid #f59e0b;">
-      <div class="d-flex gap-2 align-items-start">
-        <i class="bi bi-info-circle-fill text-warning mt-1"></i>
-        <div class="small">Le paiement renouvelle votre vignette pour <strong>une année complète</strong> à compter d'aujourd'hui.</div>
+    <div class="card p-3 mb-3">
+      <div class="fw-semibold small mb-2"><i class="bi bi-calendar3 me-1"></i>Durée de la vignette</div>
+      <div class="row g-2">
+        <div class="col-4">
+          <label class="d-block text-center p-2 rounded border duration-btn selected" data-years="1" onclick="selectDuree(1, this)" style="cursor:pointer;">
+            <div class="fw-bold">1 an</div>
+            <div class="small text-muted" id="price-1">—</div>
+          </label>
+        </div>
+        <div class="col-4">
+          <label class="d-block text-center p-2 rounded border duration-btn" data-years="2" onclick="selectDuree(2, this)" style="cursor:pointer;">
+            <div class="fw-bold">2 ans</div>
+            <div class="small text-muted" id="price-2">—</div>
+          </label>
+        </div>
+        <div class="col-4">
+          <label class="d-block text-center p-2 rounded border duration-btn" data-years="3" onclick="selectDuree(3, this)" style="cursor:pointer;">
+            <div class="fw-bold">3 ans</div>
+            <div class="small text-muted" id="price-3">—</div>
+          </label>
+        </div>
       </div>
     </div>
 
@@ -394,9 +420,38 @@
           <a id="btn-download-qr" href="#" download="vignette.png" class="btn btn-success">
             <i class="bi bi-download me-2"></i>Télécharger le QR code
           </a>
+          <button class="btn btn-outline-secondary" onclick="imprimerRecu()">
+            <i class="bi bi-printer me-2"></i>Imprimer le reçu de paiement
+          </button>
           <button class="btn btn-outline-primary" onclick="recommencer()">
             <i class="bi bi-arrow-repeat me-2"></i>Nouveau renouvellement
           </button>
+        </div>
+
+        <!-- Reçu caché — visible uniquement à l'impression -->
+        <div id="recu-print" style="display:none;">
+          <div style="font-family:serif; padding:2rem; max-width:600px; margin:0 auto;">
+            <div style="text-align:center; border-bottom:2px solid #000; padding-bottom:1rem; margin-bottom:1rem;">
+              <strong style="font-size:1.1rem;">RÉPUBLIQUE DU NIGER — MINISTÈRE DES FINANCES</strong><br>
+              Direction Générale des Impôts<br>
+              <em style="font-size:.85rem;">Système de gestion des vignettes automobiles — MY CAR</em>
+            </div>
+            <h2 style="text-align:center; font-size:1.3rem; margin:1rem 0;">REÇU DE PAIEMENT</h2>
+            <table style="width:100%; border-collapse:collapse; font-size:.95rem;">
+              <tr style="background:#f5f5f5;"><td style="padding:.5rem; font-weight:bold; width:45%;">Référence paiement</td><td id="r-ref" style="padding:.5rem; font-family:monospace;"></td></tr>
+              <tr><td style="padding:.5rem; font-weight:bold;">Immatriculation</td><td id="r-immat" style="padding:.5rem;"></td></tr>
+              <tr style="background:#f5f5f5;"><td style="padding:.5rem; font-weight:bold;">Propriétaire</td><td id="r-proprietaire" style="padding:.5rem;"></td></tr>
+              <tr><td style="padding:.5rem; font-weight:bold;">Opérateur</td><td id="r-operateur" style="padding:.5rem;"></td></tr>
+              <tr style="background:#f5f5f5;"><td style="padding:.5rem; font-weight:bold;">Durée</td><td id="r-duree" style="padding:.5rem;"></td></tr>
+              <tr><td style="padding:.5rem; font-weight:bold;">Montant payé</td><td id="r-montant" style="padding:.5rem; font-weight:bold;"></td></tr>
+              <tr style="background:#f5f5f5;"><td style="padding:.5rem; font-weight:bold;">Date de paiement</td><td id="r-date" style="padding:.5rem;"></td></tr>
+              <tr><td style="padding:.5rem; font-weight:bold;">Vignette valable jusqu'au</td><td id="r-expiry" style="padding:.5rem; font-weight:bold;"></td></tr>
+            </table>
+            <div style="margin-top:1.5rem; border:1px solid #000; padding:.75rem; text-align:center; font-size:.8rem;">
+              Ce reçu fait foi de paiement de la vignette automobile auprès de la DGI — République du Niger.
+              Conservez-le avec votre vignette physique.
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -407,12 +462,13 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 const API = '/api/v1';
-let vehicleData   = null;
-let sessionToken  = null;
+let vehicleData      = null;
+let sessionToken     = null;
 let selectedOperator = null;
-let currentRef    = null;
-let otpId         = null;
-let countdownTimer = null;
+let currentRef       = null;
+let otpId            = null;
+let countdownTimer   = null;
+let dureeAnnees      = 1;
 
 // ── Navigation ────────────────────────────────────────────────
 function goStep(n) {
@@ -562,6 +618,27 @@ async function verifierOTP() {
   goStep(3);
 }
 
+// ── Durée ─────────────────────────────────────────────────────
+function selectDuree(annees, el) {
+  dureeAnnees = annees;
+  document.querySelectorAll('.duration-btn').forEach(b => {
+    b.classList.remove('selected');
+    b.style.borderColor = '';
+    b.style.background  = '';
+  });
+  el.classList.add('selected');
+  el.style.borderColor = 'var(--primary)';
+  el.style.background  = '#d1fae5';
+  updateMontantRecap();
+}
+
+function updateMontantRecap() {
+  if (!vehicleData) return;
+  const total = vehicleData.montant_taxe * dureeAnnees;
+  document.getElementById('recap-montant').textContent = `${Number(total).toLocaleString('fr-FR')} FCFA`;
+  document.getElementById('vh-montant').textContent    = `${Number(total).toLocaleString('fr-FR')} FCFA`;
+}
+
 // ── Affichage fiche ───────────────────────────────────────────
 function afficherVehicule() {
   const v = vehicleData;
@@ -579,7 +656,18 @@ function afficherVehicule() {
   document.getElementById('vh-proprietaire').textContent = v.proprietaire;
   document.getElementById('vh-marque').textContent   = v.marque;
   document.getElementById('vh-type').textContent     = v.type_vehicule;
-  document.getElementById('vh-montant').textContent  = `${Number(v.montant_taxe).toLocaleString('fr-FR')} FCFA`;
+  // Tarifs par durée
+  [1, 2, 3].forEach(y => {
+    document.getElementById(`price-${y}`).textContent = `${Number(v.montant_taxe * y).toLocaleString('fr-FR')} FCFA`;
+  });
+  // Réinitialiser la sélection à 1 an
+  dureeAnnees = 1;
+  document.querySelectorAll('.duration-btn').forEach((b, i) => {
+    b.classList.toggle('selected', i === 0);
+    b.style.borderColor = i === 0 ? 'var(--primary)' : '';
+    b.style.background  = i === 0 ? '#d1fae5' : '';
+  });
+  document.getElementById('vh-montant').textContent   = `${Number(v.montant_taxe).toLocaleString('fr-FR')} FCFA`;
   document.getElementById('recap-montant').textContent = `${Number(v.montant_taxe).toLocaleString('fr-FR')} FCFA`;
 }
 
@@ -603,7 +691,7 @@ async function initierPaiement() {
   const r = await fetch(`${API}/public/paiement/initier/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session_token: sessionToken, operateur: selectedOperator, telephone: `+227${tel}` }),
+    body: JSON.stringify({ session_token: sessionToken, operateur: selectedOperator, telephone: `+227${tel}`, duree_annees: dureeAnnees }),
   });
 
   if (!r.ok) {
@@ -658,9 +746,26 @@ function afficherSucces(data) {
   document.getElementById('success-montant').textContent = `${Number(data.montant).toLocaleString('fr-FR')} FCFA`;
   document.getElementById('success-expiry').textContent  = new Date(data.vignette.date_fin).toLocaleDateString('fr-FR');
   const qrSrc = `data:image/png;base64,${data.qr_code_base64}`;
-  document.getElementById('success-qr').src            = qrSrc;
-  document.getElementById('btn-download-qr').href      = qrSrc;
-  document.getElementById('btn-download-qr').download  = `vignette_${vehicleData?.immatriculation || 'mycar'}.png`;
+  document.getElementById('success-qr').src           = qrSrc;
+  document.getElementById('btn-download-qr').href     = qrSrc;
+  document.getElementById('btn-download-qr').download = `vignette_${vehicleData?.immatriculation || 'mycar'}.png`;
+
+  // Pré-remplir le reçu
+  document.getElementById('r-ref').textContent         = data.reference;
+  document.getElementById('r-immat').textContent       = vehicleData?.immatriculation || '—';
+  document.getElementById('r-proprietaire').textContent = vehicleData ? `${vehicleData.proprietaire || ''}` : '—';
+  document.getElementById('r-operateur').textContent   = opLabels[data.operateur] || data.operateur;
+  document.getElementById('r-duree').textContent       = `${dureeAnnees} an${dureeAnnees > 1 ? 's' : ''}`;
+  document.getElementById('r-montant').textContent     = `${Number(data.montant).toLocaleString('fr-FR')} FCFA`;
+  document.getElementById('r-date').textContent        = new Date(data.date_confirmation || Date.now()).toLocaleString('fr-FR');
+  document.getElementById('r-expiry').textContent      = new Date(data.vignette.date_fin).toLocaleDateString('fr-FR');
+}
+
+function imprimerRecu() {
+  const recu = document.getElementById('recu-print');
+  recu.style.display = 'block';
+  window.print();
+  recu.style.display = 'none';
 }
 
 function recommencer() {

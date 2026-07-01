@@ -557,6 +557,10 @@ def public_initier_paiement(request):
     operateur     = request.data.get('operateur')
     telephone     = request.data.get('telephone', '').strip()
 
+    duree_annees  = int(request.data.get('duree_annees', 1))
+    if duree_annees not in [1, 2, 3]:
+        return Response({'error': 'duree_annees doit être 1, 2 ou 3.'}, status=400)
+
     if not all([session_token, operateur, telephone]):
         return Response({'error': 'Champs requis : session_token, operateur, telephone.'}, status=400)
 
@@ -601,7 +605,8 @@ def public_initier_paiement(request):
     paiement = Paiement.objects.create(
         automobile=auto,
         otp=otp,
-        montant=auto.montant_taxe,
+        montant=auto.montant_taxe * duree_annees,
+        duree_annees=duree_annees,
         operateur=operateur,
         telephone=telephone,
     )
@@ -633,11 +638,12 @@ def public_confirmer_paiement(request, reference):
 
     # Simulation : création de la nouvelle vignette VERT
     auto = paiement.automobile
+    date_fin = timezone.now().date() + timedelta(days=365 * paiement.duree_annees)
     sv = StatutVignette.objects.create(
         automobile=auto,
         statut=StatutVignetteChoix.VERT,
         date_debut_validite=timezone.now().date(),
-        date_fin_validite=timezone.now().date() + timedelta(days=365),
+        date_fin_validite=date_fin,
         type_modification='AUTOMATIQUE',
         operateur=None,
         mobile_payment_ref=paiement.reference,
@@ -664,6 +670,13 @@ def public_confirmer_paiement(request, reference):
     sms_confirmation_paiement(
         auto.telephone, auto.immatriculation,
         float(paiement.montant), paiement.reference
+    )
+
+    HistoriqueConsultation.objects.create(
+        utilisateur=None,
+        automobile=auto,
+        action_performee=f'Paiement confirmé | Durée: {paiement.duree_annees} an(s) | Réf: {paiement.reference}',
+        ip_address=request.META.get('REMOTE_ADDR'),
     )
 
     return Response({
@@ -997,7 +1010,10 @@ from django.template.loader import render_to_string
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def certificat_vignette(request, automobile_id):
-    """Génère les données pour le certificat numérique (QR + infos vignette)."""
+    """Génère les données pour le certificat numérique (QR + infos vignette). Réservé à l'admin système."""
+    if request.user.role != RoleUtilisateur.ADMIN_SYS:
+        return Response({'error': 'Le certificat numérique est réservé à l\'administrateur système (CARBOOK).'}, status=403)
+
     auto = get_object_or_404(Automobile, id=automobile_id)
 
     if not auto.statut_actuel:
@@ -1246,3 +1262,38 @@ def export_excel(request):
 @api_view(['GET'])
 def health_check(request):
     return Response({'status': 'ok', 'timestamp': timezone.now()}, status=200)
+
+
+# =============== INSPECTION GPS (POLICE) ===============
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def log_inspection_gps(request):
+    """
+    Enregistre une inspection police avec coordonnées GPS.
+    Body: { immatriculation, region, latitude, longitude }
+    """
+    roles_autorises = {RoleUtilisateur.POLICE, RoleUtilisateur.ADMIN_SYS, RoleUtilisateur.SUP_DGI, RoleUtilisateur.AGENT_DGI}
+    if request.user.role not in roles_autorises:
+        return Response({'error': 'Accès non autorisé.'}, status=403)
+
+    immat    = request.data.get('immatriculation', '').strip().upper()
+    region   = request.data.get('region', '').strip()
+    latitude = request.data.get('latitude')
+    longitude = request.data.get('longitude')
+
+    auto = Automobile.objects.filter(immatriculation__iexact=immat).first()
+    if not auto:
+        return Response({'error': 'Véhicule introuvable.'}, status=404)
+
+    gps_info = ''
+    if latitude is not None and longitude is not None:
+        gps_info = f' | GPS: {latitude},{longitude}'
+
+    HistoriqueConsultation.objects.create(
+        utilisateur=request.user,
+        automobile=auto,
+        action_performee=f'Inspection police{gps_info}',
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
+    return Response({'ok': True})

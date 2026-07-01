@@ -52,6 +52,16 @@
 {% block scripts %}
 <script>
 const recentChecks = [];
+let gpsCoords = null;
+
+// Capture GPS silencieuse au chargement (pour la police)
+if (navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition(
+    pos => { gpsCoords = { lat: pos.coords.latitude, lon: pos.coords.longitude }; },
+    () => { gpsCoords = null; },
+    { timeout: 5000, maximumAge: 60000 }
+  );
+}
 
 async function loadRegions() {
   const data = await Api.get('/regions/');
@@ -188,6 +198,14 @@ async function verifier() {
         </div>
       </div>
     </div>`;
+
+  // Log inspection GPS
+  Api.post('/police/inspection/', {
+    immatriculation: auto.immatriculation,
+    region: auto.region?.nom_region || '',
+    latitude:  gpsCoords?.lat ?? null,
+    longitude: gpsCoords?.lon ?? null,
+  });
 
   // Historique récent
   recentChecks.unshift({ immat: auto.immatriculation, statut, time: new Date() });
