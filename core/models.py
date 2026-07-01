@@ -15,7 +15,9 @@ class RoleUtilisateur(models.TextChoices):
 
 class TypeVehicule(models.TextChoices):
     VEHICULE = 'VEHICULE', 'Véhicule'
-    MOTO = 'MOTO', 'Moto'
+    MOTO     = 'MOTO',     'Moto'
+    BUS      = 'BUS',      'Bus'
+    CAMION   = 'CAMION',   'Camion'
 
 
 class Energie(models.TextChoices):
@@ -24,9 +26,21 @@ class Energie(models.TextChoices):
 
 
 class StatutVignetteChoix(models.TextChoices):
-    VERT = 'VERT', 'Vert - Valide'
+    VERT   = 'VERT',   'Vert - Valide'
     ORANGE = 'ORANGE', 'Orange - Échéance imminente'
-    ROUGE = 'ROUGE', 'Rouge - Expiré'
+    ROUGE  = 'ROUGE',  'Rouge - Expiré'
+
+
+class StatutApprobationVehicule(models.TextChoices):
+    EN_ATTENTE = 'EN_ATTENTE', 'En attente'
+    APPROUVE   = 'APPROUVE',   'Approuvé'
+    REJETE     = 'REJETE',     'Rejeté'
+    SUSPENDU   = 'SUSPENDU',   'Suspendu'
+
+
+class StatutPhysiqueVignette(models.TextChoices):
+    NON_ATTRIBUE = 'NON_ATTRIBUE', 'Non attribué'
+    ATTRIBUE     = 'ATTRIBUE',     'Attribué'
 
 
 class TypeModification(models.TextChoices):
@@ -88,10 +102,18 @@ class Automobile(models.Model):
     modele = models.CharField(max_length=100, blank=True)
     energie = models.CharField(max_length=20, choices=Energie.choices, null=True)
     puissance_cv = models.IntegerField()
+    annee_fabrication = models.IntegerField(null=True, blank=True)
     montant_taxe = models.DecimalField(max_digits=10, decimal_places=2)
     numero_chassis = models.CharField(max_length=50, unique=True)
     date_mise_circulation = models.DateField(null=True)
     date_edition_carte_grise = models.DateField(null=True)
+    # Workflow d'approbation (Pending → Approved/Rejected/Suspended)
+    statut_approbation = models.CharField(
+        max_length=20,
+        choices=StatutApprobationVehicule.choices,
+        default=StatutApprobationVehicule.EN_ATTENTE,
+    )
+    notes_approbation = models.TextField(blank=True)
     statut_actuel = models.ForeignKey(
         'StatutVignette', null=True, blank=True,
         on_delete=models.SET_NULL, related_name='current_auto'
@@ -127,6 +149,15 @@ class StatutVignette(models.Model):
     type_modification = models.CharField(max_length=20, choices=TypeModification.choices)
     operateur = models.ForeignKey(Utilisateur, null=True, on_delete=models.SET_NULL)
     mobile_payment_ref = models.CharField(max_length=255, blank=True)
+    # Suivi vignette physique
+    statut_physique = models.CharField(
+        max_length=20,
+        choices=StatutPhysiqueVignette.choices,
+        default=StatutPhysiqueVignette.NON_ATTRIBUE,
+    )
+    # Pour transitions manuelles : n° de reçu + notes obligatoires
+    numero_recu = models.CharField(max_length=100, blank=True)
+    notes_admin = models.TextField(blank=True)
     date_creation = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):

@@ -15,7 +15,8 @@ from datetime import timedelta
 
 from .models import (
     Automobile, Region, Utilisateur, RoleUtilisateur,
-    StatutVignette, StatutVignetteChoix, CodeSecurite, HistoriqueConsultation,
+    StatutVignette, StatutVignetteChoix, StatutApprobationVehicule, StatutPhysiqueVignette,
+    TypeModification, CodeSecurite, HistoriqueConsultation,
     Paiement, StatutPaiement, OperateurPaiement, OTPVerification,
     ParametrePlateforme,
 )
@@ -190,14 +191,31 @@ def generer_code_securite(request, automobile_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def modifier_statut(request):
-    """Modification manuelle du statut via code sécurité"""
-    immatriculation = request.data.get('immatriculation')
-    region_nom = request.data.get('region')
-    code = request.data.get('code_securite')
-    nouveau_statut = request.data.get('nouveau_statut', StatutVignetteChoix.VERT)
+    """
+    Modification manuelle du statut (Admin système uniquement).
+    Transitions autorisées : ROUGE → VERT ou ROUGE → ORANGE.
+    Champs obligatoires : code_securite, numero_recu, notes_admin.
+    """
+    if request.user.role != RoleUtilisateur.ADMIN_SYS:
+        return Response({'error': 'Seul l\'administrateur système peut modifier manuellement le statut.'}, status=403)
 
-    if not all([immatriculation, region_nom, code]):
-        return Response({'error': 'Champs obligatoires : immatriculation, region, code_securite'}, status=400)
+    immatriculation = request.data.get('immatriculation')
+    region_nom      = request.data.get('region')
+    code            = request.data.get('code_securite')
+    nouveau_statut  = request.data.get('nouveau_statut')
+    numero_recu     = request.data.get('numero_recu', '').strip()
+    notes_admin     = request.data.get('notes_admin', '').strip()
+
+    if not all([immatriculation, region_nom, code, nouveau_statut, numero_recu, notes_admin]):
+        return Response({
+            'error': 'Champs obligatoires : immatriculation, region, code_securite, '
+                     'nouveau_statut, numero_recu, notes_admin'
+        }, status=400)
+
+    # Seules transitions autorisées : ROUGE → VERT ou ROUGE → ORANGE
+    transitions_autorisees = {
+        StatutVignetteChoix.ROUGE: [StatutVignetteChoix.VERT, StatutVignetteChoix.ORANGE],
+    }
 
     try:
         auto = Automobile.objects.get(
@@ -207,31 +225,113 @@ def modifier_statut(request):
     except Automobile.DoesNotExist:
         return Response({'error': 'Véhicule non trouvé'}, status=404)
 
+    statut_courant = auto.statut_actuel.statut if auto.statut_actuel else StatutVignetteChoix.ROUGE
+
+    if statut_courant not in transitions_autorisees:
+        return Response({
+            'error': f'Transition non autorisée. Le véhicule est actuellement {statut_courant}. '
+                     f'Seul un véhicule ROUGE peut être modifié manuellement.'
+        }, status=400)
+
+    if nouveau_statut not in transitions_autorisees[statut_courant]:
+        return Response({
+            'error': f'Transition {statut_courant} → {nouveau_statut} non autorisée. '
+                     f'Transitions valides depuis ROUGE : VERT ou ORANGE.'
+        }, status=400)
+
     try:
         code_obj = CodeSecurite.objects.get(automobile=auto, code=code, statut_usage='ACTIF')
     except CodeSecurite.DoesNotExist:
         return Response({'error': 'Code sécurité invalide ou déjà utilisé'}, status=403)
 
-    if nouveau_statut not in StatutVignetteChoix.values:
-        return Response({'error': f'Statut invalide. Valeurs acceptées : {StatutVignetteChoix.values}'}, status=400)
-
     statut = StatutVignette.objects.create(
         automobile=auto,
         statut=nouveau_statut,
         date_debut_validite=timezone.now().date(),
-        date_fin_validite=timezone.now().date() + timedelta(days=365),
-        type_modification='MANUELLE',
+        date_fin_validite=timezone.now().date().replace(month=12, day=31),
+        type_modification=TypeModification.MANUELLE,
         operateur=request.user,
+        numero_recu=numero_recu,
+        notes_admin=notes_admin,
     )
     auto.statut_actuel = statut
     auto.save(update_fields=['statut_actuel'])
 
-    # Marquer le code comme utilisé
     code_obj.statut_usage = 'UTILISE'
     code_obj.date_utilisation = timezone.now()
     code_obj.save(update_fields=['statut_usage', 'date_utilisation'])
 
-    return Response({'success': True, 'nouveau_statut': statut.statut})
+    # Traçabilité audit
+    HistoriqueConsultation.objects.create(
+        utilisateur=request.user,
+        automobile=auto,
+        action_performee=f'Transition manuelle {statut_courant} → {nouveau_statut} | Reçu: {numero_recu}',
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
+
+    return Response({
+        'success': True,
+        'ancien_statut': statut_courant,
+        'nouveau_statut': statut.statut,
+        'numero_recu': numero_recu,
+    })
+
+
+# =============== APPROBATION VÉHICULE ===============
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def approuver_vehicule(request, automobile_id):
+    """
+    Approuver ou rejeter un véhicule (Admin système uniquement).
+    Body: { "decision": "APPROUVE"|"REJETE"|"SUSPENDU", "notes": "..." }
+    Lors de l'approbation, le statut vignette initial est automatiquement ROUGE.
+    """
+    if request.user.role != RoleUtilisateur.ADMIN_SYS:
+        return Response({'error': 'Seul l\'administrateur système peut approuver les véhicules.'}, status=403)
+
+    decision = request.data.get('decision', '').strip().upper()
+    notes    = request.data.get('notes', '').strip()
+
+    if decision not in StatutApprobationVehicule.values:
+        return Response({'error': f'Décision invalide. Valeurs : {StatutApprobationVehicule.values}'}, status=400)
+
+    try:
+        auto = Automobile.objects.get(id=automobile_id)
+    except Automobile.DoesNotExist:
+        return Response({'error': 'Véhicule introuvable.'}, status=404)
+
+    auto.statut_approbation = decision
+    auto.notes_approbation  = notes
+    auto.save(update_fields=['statut_approbation', 'notes_approbation'])
+
+    # À l'approbation : créer le statut ROUGE initial si aucun statut n'existe
+    if decision == StatutApprobationVehicule.APPROUVE and not auto.statut_actuel:
+        sv = StatutVignette.objects.create(
+            automobile=auto,
+            statut=StatutVignetteChoix.ROUGE,
+            date_debut_validite=timezone.now().date(),
+            date_fin_validite=timezone.now().date().replace(month=12, day=31),
+            type_modification=TypeModification.MANUELLE,
+            operateur=request.user,
+            notes_admin='Statut initial ROUGE à l\'approbation du véhicule.',
+        )
+        auto.statut_actuel = sv
+        auto.save(update_fields=['statut_actuel'])
+
+    HistoriqueConsultation.objects.create(
+        utilisateur=request.user,
+        automobile=auto,
+        action_performee=f'Décision approbation : {decision} | Notes : {notes}',
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
+
+    return Response({
+        'success': True,
+        'immatriculation': auto.immatriculation,
+        'statut_approbation': auto.statut_approbation,
+        'statut_vignette': auto.statut_actuel.statut if auto.statut_actuel else None,
+    })
 
 
 # =============== DASHBOARD ===============
@@ -445,6 +545,25 @@ def public_initier_paiement(request):
         return Response({'error': 'Un paiement a déjà été initié pour cette session. Veuillez recommencer.'}, status=400)
 
     auto = otp.automobile
+
+    # Véhicule doit être approuvé
+    if auto.statut_approbation != StatutApprobationVehicule.APPROUVE:
+        return Response({
+            'error': f'Ce véhicule n\'est pas approuvé (statut : {auto.statut_approbation}). '
+                     f'Contactez la DGI pour faire valider votre véhicule.'
+        }, status=403)
+
+    # Paiement autorisé uniquement si statut ORANGE
+    statut_vignette = auto.statut_actuel.statut if auto.statut_actuel else StatutVignetteChoix.ROUGE
+    if statut_vignette != StatutVignetteChoix.ORANGE:
+        messages = {
+            StatutVignetteChoix.VERT:  'Votre vignette est encore valide (VERTE). Le renouvellement ne sera possible que lorsqu\'elle sera ORANGE.',
+            StatutVignetteChoix.ROUGE: 'Votre vignette est expirée (ROUGE). Le renouvellement en ligne n\'est pas possible. Présentez-vous à la DGI.',
+        }
+        return Response({
+            'error': messages.get(statut_vignette, f'Statut {statut_vignette} ne permet pas le paiement en ligne.')
+        }, status=403)
+
     Paiement.objects.filter(automobile=auto, statut=StatutPaiement.EN_ATTENTE).update(statut=StatutPaiement.ECHOUE)
 
     paiement = Paiement.objects.create(
