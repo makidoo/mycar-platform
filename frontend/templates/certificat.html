@@ -106,7 +106,7 @@
 
 {% block scripts %}
 <script>
-const vehicleId = window.location.pathname.replace(/\/$/, '').split('/').pop();
+const vehicleId = window.location.pathname.match(/\/vehicules\/(\d+)\//)?.[1];
 
 const STATUT_STYLES = {
   VERT:   { bg: '#dcfce7', color: '#166534', icon: '✓', label: 'VALIDE' },
