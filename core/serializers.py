@@ -2,7 +2,7 @@ from rest_framework import serializers
 from .models import (
     Region, Utilisateur, Automobile,
     StatutVignette, CodeSecurite, HistoriqueConsultation, Paiement,
-    ParametrePlateforme, DemandeTransfert,
+    ParametrePlateforme, DemandeTransfert, Plainte,
 )
 
 
@@ -140,6 +140,26 @@ class PaiementSerializer(serializers.ModelSerializer):
             'telephone', 'statut', 'date_initiation', 'date_confirmation',
         ]
         read_only_fields = ['reference', 'statut', 'date_initiation', 'date_confirmation']
+
+
+class PlainteSerializer(serializers.ModelSerializer):
+    traite_par_nom = serializers.SerializerMethodField()
+    automobile_immat = serializers.CharField(source='automobile.immatriculation', read_only=True)
+
+    class Meta:
+        model = Plainte
+        fields = [
+            'id', 'reference', 'automobile', 'automobile_immat',
+            'nom_plaignant', 'telephone', 'sujet', 'description',
+            'statut', 'reponse_admin', 'traite_par', 'traite_par_nom',
+            'date_creation', 'date_traitement',
+        ]
+        read_only_fields = ['reference', 'statut', 'reponse_admin', 'traite_par', 'date_creation', 'date_traitement']
+
+    def get_traite_par_nom(self, obj):
+        if obj.traite_par:
+            return f"{obj.traite_par.nom} {obj.traite_par.prenom}"
+        return None
 
 
 class HistoriqueConsultationSerializer(serializers.ModelSerializer):

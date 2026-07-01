@@ -19,7 +19,9 @@ from .models import (
     TypeModification, CodeSecurite, HistoriqueConsultation,
     Paiement, StatutPaiement, OperateurPaiement, OTPVerification,
     ParametrePlateforme, DemandeTransfert, StatutTransfert,
+    Plainte, StatutPlainte, NotificationLog,
 )
+from .sms_service import sms_confirmation_paiement, sms_otp, sms_plainte_recue, sms_transfert_approuve
 import random
 from .serializers import (
     AutomobileReadSerializer, AutomobileWriteSerializer,
@@ -457,17 +459,21 @@ def public_demander_otp(request):
         date_expiration=timezone.now() + timedelta(minutes=10),
     )
 
-    # En production : envoyer le SMS ici via API opérateur
-    # Simulation : on retourne le code en clair pour la démo
+    # Envoi SMS (mock en dev, réel en prod via SMS_PROVIDER)
+    sms_result = sms_otp(auto.telephone, code, auto.immatriculation)
 
-    return Response({
+    resp = {
         'otp_id':           otp.id,
         'telephone_masque': _masquer_telephone(auto.telephone),
         'expires_in':       600,
-        # --- DÉMO SEULEMENT — à supprimer en production ---
-        'demo_code':        code,
-        'demo_notice':      'En production, ce code serait envoyé par SMS uniquement.',
-    }, status=200)
+        'sms_envoye':       sms_result['ok'],
+    }
+    # En démo uniquement : retourner le code en clair
+    import os
+    if os.getenv('MOCK_SERVICES', 'True').lower() in ('true', '1', 'yes'):
+        resp['demo_code']   = code
+        resp['demo_notice'] = 'Mode démo : SMS simulé. En production, le code est envoyé par SMS uniquement.'
+    return Response(resp, status=200)
 
 
 @api_view(['POST'])
@@ -627,6 +633,12 @@ def public_confirmer_paiement(request, reference):
     buf = io.BytesIO()
     img.save(buf, format='PNG')
     qr_b64 = base64.b64encode(buf.getvalue()).decode()
+
+    # SMS de confirmation
+    sms_confirmation_paiement(
+        auto.telephone, auto.immatriculation,
+        float(paiement.montant), paiement.reference
+    )
 
     return Response({
         'statut':          'CONFIRME',
@@ -941,6 +953,8 @@ class DemandeTransfertViewSet(viewsets.ModelViewSet):
                 action_performee=f'Transfert propriété approuvé : {demande.ancien_nom} → {demande.nouveau_nom} {demande.nouveau_prenom}',
                 ip_address=request.META.get('REMOTE_ADDR'),
             )
+            # Notifier le nouveau propriétaire
+            sms_transfert_approuve(demande.nouveau_telephone, auto.immatriculation)
 
         return Response({
             'success': True,
@@ -1009,6 +1023,196 @@ def certificat_vignette(request, automobile_id):
         'qr_code_base64': qr_b64,
         'genere_le': timezone.now().isoformat(),
     })
+
+
+# =============== PLAINTES / LITIGES ===============
+
+class PlainteViewSet(viewsets.ModelViewSet):
+    queryset = Plainte.objects.select_related('automobile', 'traite_par').order_by('-date_creation')
+    permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+        from .serializers import PlainteSerializer
+        return PlainteSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        plainte = serializer.save()
+        # SMS de confirmation au plaignant
+        sms_plainte_recue(plainte.telephone, plainte.reference)
+
+    @action(detail=True, methods=['post'])
+    def traiter(self, request, pk=None):
+        """Répondre / clore une plainte (Admin ou Superviseur DGI)."""
+        roles_autorises = {RoleUtilisateur.ADMIN_SYS, RoleUtilisateur.SUP_DGI}
+        if request.user.role not in roles_autorises:
+            return Response({'error': 'Accès non autorisé.'}, status=403)
+
+        plainte = self.get_object()
+        nouveau_statut = request.data.get('statut', StatutPlainte.RESOLUE)
+        reponse        = request.data.get('reponse', '').strip()
+
+        if nouveau_statut not in StatutPlainte.values:
+            return Response({'error': f'Statut invalide. Valeurs : {StatutPlainte.values}'}, status=400)
+
+        plainte.statut          = nouveau_statut
+        plainte.reponse_admin   = reponse
+        plainte.traite_par      = request.user
+        plainte.date_traitement = timezone.now()
+        plainte.save()
+
+        return Response({'success': True, 'reference': plainte.reference, 'statut': plainte.statut})
+
+
+# =============== EXPORT EXCEL ===============
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def export_excel(request):
+    """
+    Export Excel (.xlsx) des véhicules ou des paiements.
+    ?type=vehicules|paiements (défaut: vehicules)
+    Filtres : region, statut, date_debut, date_fin
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    type_export = request.query_params.get('type', 'vehicules')
+
+    wb = Workbook()
+    ws = wb.active
+
+    # Styles
+    header_font  = Font(bold=True, color='FFFFFF', size=11)
+    header_fill  = PatternFill(fill_type='solid', fgColor='0F766E')
+    center       = Alignment(horizontal='center', vertical='center')
+    thin_border  = Border(
+        bottom=Side(style='thin', color='E5E7EB'),
+    )
+
+    def style_header(row_num):
+        for cell in ws[row_num]:
+            cell.font      = header_font
+            cell.fill      = header_fill
+            cell.alignment = center
+
+    def style_row(row_num, alternate=False):
+        fill_color = 'F0FDF4' if alternate else 'FFFFFF'
+        for cell in ws[row_num]:
+            cell.fill      = PatternFill(fill_type='solid', fgColor=fill_color)
+            cell.border    = thin_border
+            cell.alignment = Alignment(vertical='center')
+
+    if type_export == 'vehicules':
+        ws.title = 'Véhicules'
+        qs = Automobile.objects.select_related('region', 'statut_actuel').all()
+
+        region = request.query_params.get('region')
+        statut = request.query_params.get('statut')
+        if region: qs = qs.filter(region__nom_region__iexact=region)
+        if statut: qs = qs.filter(statut_actuel__statut__iexact=statut)
+
+        headers = [
+            'Immatriculation', 'Région', 'Propriétaire', 'Téléphone',
+            'Type', 'Marque', 'Énergie', 'Puissance (CV)', 'Châssis',
+            'Approbation', 'Statut vignette', 'Fin validité', 'Statut physique',
+            'Date création',
+        ]
+        ws.append(headers)
+        style_header(1)
+        ws.row_dimensions[1].height = 20
+
+        for i, auto in enumerate(qs, start=2):
+            s = auto.statut_actuel
+            ws.append([
+                auto.immatriculation,
+                auto.region.nom_region,
+                f"{auto.nom} {auto.prenom}",
+                auto.telephone,
+                auto.type_vehicule,
+                f"{auto.marque} {auto.modele or ''}".strip(),
+                auto.energie or '',
+                auto.puissance_cv,
+                auto.numero_chassis,
+                auto.statut_approbation,
+                s.statut if s else 'ROUGE',
+                s.date_fin_validite.strftime('%d/%m/%Y') if s else '',
+                s.statut_physique if s else '',
+                auto.date_creation.strftime('%d/%m/%Y'),
+            ])
+            style_row(i, alternate=(i % 2 == 0))
+
+        col_widths = [15, 12, 22, 16, 10, 18, 10, 12, 20, 12, 14, 12, 14, 14]
+
+    elif type_export == 'paiements':
+        ws.title = 'Paiements'
+        qs = Paiement.objects.filter(statut=StatutPaiement.CONFIRME).select_related(
+            'automobile__region'
+        ).order_by('-date_confirmation')
+
+        region    = request.query_params.get('region')
+        operateur = request.query_params.get('operateur')
+        date_debut = request.query_params.get('date_debut')
+        date_fin   = request.query_params.get('date_fin')
+
+        if region:     qs = qs.filter(automobile__region__nom_region__iexact=region)
+        if operateur:  qs = qs.filter(operateur=operateur)
+        if date_debut: qs = qs.filter(date_confirmation__date__gte=date_debut)
+        if date_fin:   qs = qs.filter(date_confirmation__date__lte=date_fin)
+
+        headers = [
+            'Référence', 'Immatriculation', 'Région', 'Propriétaire',
+            'Opérateur', 'Téléphone', 'Montant (FCFA)', 'Date confirmation',
+        ]
+        ws.append(headers)
+        style_header(1)
+        ws.row_dimensions[1].height = 20
+
+        for i, p in enumerate(qs, start=2):
+            ws.append([
+                p.reference,
+                p.automobile.immatriculation,
+                p.automobile.region.nom_region,
+                f"{p.automobile.nom} {p.automobile.prenom}",
+                p.operateur,
+                p.telephone,
+                float(p.montant),
+                p.date_confirmation.strftime('%d/%m/%Y %H:%M') if p.date_confirmation else '',
+            ])
+            style_row(i, alternate=(i % 2 == 0))
+
+        col_widths = [18, 15, 12, 22, 14, 16, 16, 18]
+
+    else:
+        return Response({'error': 'type doit être vehicules ou paiements'}, status=400)
+
+    # Largeurs colonnes
+    for idx, width in enumerate(col_widths, start=1):
+        ws.column_dimensions[get_column_letter(idx)].width = width
+
+    # Figer la ligne d'en-tête
+    ws.freeze_panes = 'A2'
+
+    # Retourner le fichier
+    from io import BytesIO
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    filename = f"mycar_{type_export}_{timezone.now().strftime('%Y%m%d_%H%M')}.xlsx"
+    response = HttpResponse(
+        buf.read(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
 
 
 # =============== HEALTH CHECK ===============

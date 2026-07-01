@@ -22,4 +22,5 @@ urlpatterns = [
     path('vehicules/<int:pk>/certificat/', TemplateView.as_view(template_name='certificat.html'), name='certificat'),
     path('distribution/', TemplateView.as_view(template_name='agent_distribution.html'), name='agent_distribution'),
     path('transferts/',   TemplateView.as_view(template_name='transferts.html'),         name='transferts'),
+    path('plaintes/',     TemplateView.as_view(template_name='plaintes.html'),           name='plaintes'),
 ]

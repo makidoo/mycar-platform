@@ -111,6 +111,34 @@ async function verifier() {
     ROUGE:  'Vignette expirée',
   };
 
+  const statut_physique = s?.statut_physique || 'NON_ATTRIBUE';
+  const alerteRouge = statut === 'ROUGE' ? `
+    <div class="alert d-flex align-items-start gap-3 mt-3"
+         style="background:#fef2f2; border:2px solid #dc2626; border-radius:10px;">
+      <i class="bi bi-exclamation-triangle-fill text-danger fs-4 mt-1"></i>
+      <div>
+        <div class="fw-bold text-danger fs-6">⚠ ALERTE INFRACTION</div>
+        <div class="small mt-1">
+          Ce véhicule n'est <strong>pas en conformité</strong> avec la réglementation sur la vignette automobile.
+          La vignette est expirée ou non valide. Des poursuites peuvent être engagées.
+        </div>
+        <div class="mt-2 small text-danger fw-semibold">
+          Action recommandée : Verbalisation / Mise en fourrière selon les procédures en vigueur.
+        </div>
+      </div>
+    </div>` : '';
+
+  const alertePhysique = statut_physique === 'NON_ATTRIBUE' ? `
+    <div class="alert alert-warning d-flex align-items-center gap-2 mt-2 py-2 small">
+      <i class="bi bi-exclamation-triangle me-1"></i>
+      <strong>Vignette physique non attribuée</strong> — Le propriétaire n'a pas récupéré sa vignette physique au centre de distribution.
+    </div>` : `
+    <div class="alert d-flex align-items-center gap-2 mt-2 py-2 small"
+         style="background:#f0fdf4; border:1px solid #86efac;">
+      <i class="bi bi-check-circle-fill text-success me-1"></i>
+      <strong>Vignette physique attribuée</strong> — La vignette physique a été remise au propriétaire.
+    </div>`;
+
   zone.innerHTML = `
     <div class="row justify-content-center">
       <div class="col-lg-7">
@@ -119,6 +147,8 @@ async function verifier() {
           <div class="verif-statut">${statut}</div>
           <div class="verif-sub">${msgs[statut]}</div>
         </div>
+        ${alerteRouge}
+        ${alertePhysique}
         <div class="card p-3 mt-3">
           <div class="row g-3 text-center">
             <div class="col-4">
@@ -146,10 +176,14 @@ async function verifier() {
               <div class="fw-bold ${statut === 'ROUGE' ? 'text-danger' : ''}">${formatDate(s?.date_fin_validite)}</div>
             </div>
           </div>
-          <div class="text-center mt-3">
+          <div class="text-center mt-3 d-flex gap-2 justify-content-center flex-wrap">
             <a href="/vehicules/${auto.id}/" class="btn btn-sm btn-outline-primary">
-              <i class="bi bi-card-text me-1"></i>Voir la fiche complète
+              <i class="bi bi-card-text me-1"></i>Fiche complète
             </a>
+            ${statut === 'ROUGE' ? `
+            <button class="btn btn-sm btn-danger" onclick="signalerInfraction('${auto.immatriculation}', ${auto.id})">
+              <i class="bi bi-exclamation-triangle me-1"></i>Signaler infraction
+            </button>` : ''}
           </div>
         </div>
       </div>
@@ -172,6 +206,26 @@ function updateRecent() {
       <strong>${c.immat}</strong>
       <span class="text-muted small ms-auto">${c.time.toLocaleTimeString('fr-FR')}</span>
     </div>`).join('');
+}
+
+async function signalerInfraction(immat, autoId) {
+  const sujet = `Infraction vignette — ${immat}`;
+  const description = `Véhicule ${immat} contrôlé le ${new Date().toLocaleDateString('fr-FR')} avec statut ROUGE (vignette expirée/non conforme). Signalement effectué via le portail de vérification Police.`;
+
+  const _user = Api.getUser();
+  const result = await Api.post('/plaintes/', {
+    automobile:    autoId,
+    nom_plaignant: `${_user?.nom || 'Agent'} ${_user?.prenom || 'Police'}`,
+    telephone:     _user?.email || 'police@dgi.ne',
+    sujet,
+    description,
+  });
+
+  if (result?.ok) {
+    showToast(`Infraction enregistrée — Réf: ${result.data?.reference || '—'}`);
+  } else {
+    showToast('Erreur lors du signalement.', 'danger');
+  }
 }
 
 loadRegions();

@@ -5,10 +5,11 @@ from .views import (
     MyCarTokenObtainPairView, me,
     UtilisateurViewSet, RegionViewSet, AutomobileViewSet,
     StatutVignetteViewSet, CodeSecuriteViewSet, HistoriqueConsultationViewSet,
-    AdminUtilisateurViewSet, ParametrePlateformeViewSet, DemandeTransfertViewSet,
+    AdminUtilisateurViewSet, ParametrePlateformeViewSet,
+    DemandeTransfertViewSet, PlainteViewSet,
     generer_code_securite, modifier_statut, approuver_vehicule,
     agent_rechercher_vehicule, agent_attribuer_vignette,
-    certificat_vignette,
+    certificat_vignette, export_excel,
     dashboard_superviseur, dashboard_financier, health_check,
     public_demander_otp, public_verifier_otp,
     public_initier_paiement, public_confirmer_paiement,
@@ -24,6 +25,7 @@ router.register(r'historique', HistoriqueConsultationViewSet, basename='historiq
 router.register(r'admin/utilisateurs', AdminUtilisateurViewSet,   basename='admin-utilisateur')
 router.register(r'admin/parametres',   ParametrePlateformeViewSet, basename='admin-parametre')
 router.register(r'transferts',         DemandeTransfertViewSet,    basename='transfert')
+router.register(r'plaintes',           PlainteViewSet,             basename='plainte')
 
 urlpatterns = [
     path('auth/login/', MyCarTokenObtainPairView.as_view(), name='token_obtain_pair'),
@@ -32,6 +34,7 @@ urlpatterns = [
     path('automobiles/<int:automobile_id>/generer-code/', generer_code_securite,  name='generer_code_securite'),
     path('automobiles/<int:automobile_id>/approuver/',   approuver_vehicule,      name='approuver_vehicule'),
     path('automobiles/<int:automobile_id>/certificat/', certificat_vignette,      name='certificat_vignette'),
+    path('export/excel/',                               export_excel,              name='export_excel'),
     path('agent/rechercher/',                           agent_rechercher_vehicule, name='agent_rechercher'),
     path('agent/attribuer/<int:automobile_id>/',        agent_attribuer_vignette,  name='agent_attribuer'),
     path('statuts/modifier/', modifier_statut, name='modifier_statut'),

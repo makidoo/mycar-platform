@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Plaintes & Litiges{% endblock %}
+{% block page_title %}<i class="bi bi-chat-left-text me-2"></i>Plaintes & Litiges{% endblock %}
+
+{% block content %}
+
+<ul class="nav nav-tabs mb-3" id="tabs-plainte">
+  <li class="nav-item">
+    <a class="nav-link active" href="#" onclick="filtrer('OUVERTE', this)">
+      Ouvertes <span class="badge bg-danger ms-1" id="badge-ouvertes">0</span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="#" onclick="filtrer('EN_COURS', this)">
+      En cours <span class="badge bg-warning text-dark ms-1" id="badge-encours">0</span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="#" onclick="filtrer('RESOLUE', this)">Résolues</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="#" onclick="filtrer('REJETEE', this)">Rejetées</a>
+  </li>
+  <li class="nav-item ms-auto">
+    <a class="nav-link text-primary" href="#" onclick="filtrer('NOUVELLE', this)">
+      <i class="bi bi-plus-circle me-1"></i>Nouvelle plainte
+    </a>
+  </li>
+</ul>
+
+<!-- Liste des plaintes -->
+<div id="panel-liste">
+  <div id="list-plaintes">
+    <div class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Chargement…</div>
+  </div>
+</div>
+
+<!-- Formulaire nouvelle plainte -->
+<div id="panel-nouvelle" class="d-none">
+  <div class="card p-3" style="max-width:640px;">
+    <div class="section-title">Déposer une nouvelle plainte</div>
+    <div class="row g-3">
+      <div class="col-6">
+        <label class="form-label small">Nom du plaignant *</label>
+        <input type="text" id="plt-nom" class="form-control">
+      </div>
+      <div class="col-6">
+        <label class="form-label small">Téléphone *</label>
+        <input type="text" id="plt-telephone" class="form-control" placeholder="+227 XX XX XX XX">
+      </div>
+      <div class="col-12">
+        <label class="form-label small">Immatriculation concernée (optionnel)</label>
+        <div class="input-group">
+          <input type="text" id="plt-immat" class="form-control font-monospace text-uppercase" placeholder="AB-1234-NE">
+          <button class="btn btn-outline-secondary btn-sm" onclick="rechercherAutoplainte()">
+            <i class="bi bi-search"></i>
+          </button>
+        </div>
+        <input type="hidden" id="plt-auto-id">
+        <div id="plt-auto-info" class="form-text d-none"></div>
+      </div>
+      <div class="col-12">
+        <label class="form-label small">Sujet *</label>
+        <input type="text" id="plt-sujet" class="form-control" placeholder="Ex : Double facturation, erreur de montant…" maxlength="200">
+      </div>
+      <div class="col-12">
+        <label class="form-label small">Description détaillée *</label>
+        <textarea id="plt-description" class="form-control" rows="4"
+                  placeholder="Décrivez le problème en détail…"></textarea>
+      </div>
+    </div>
+    <div id="plt-alert" class="alert d-none py-2 small mt-3"></div>
+    <button class="btn btn-primary-custom mt-3" onclick="soumettrePlainte()">
+      <i class="bi bi-send me-2"></i>Soumettre la plainte
+    </button>
+  </div>
+</div>
+
+<!-- Modal traitement -->
+<div class="modal fade" id="modal-plainte" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-chat-left-text me-2"></i>Traiter la plainte</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="modal-plainte-detail" class="mb-3"></div>
+        <input type="hidden" id="modal-plainte-id">
+        <div class="mb-3">
+          <label class="form-label small">Nouveau statut</label>
+          <select id="modal-plainte-statut" class="form-select">
+            <option value="EN_COURS">En cours de traitement</option>
+            <option value="RESOLUE">Résolue</option>
+            <option value="REJETEE">Rejetée</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small">Réponse / décision *</label>
+          <textarea id="modal-plainte-reponse" class="form-control" rows="3"
+                    placeholder="Expliquez la décision ou les actions prises…"></textarea>
+        </div>
+        <div id="modal-plainte-alert" class="alert d-none py-2 small"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button class="btn btn-primary-custom" onclick="traiterPlainte()">
+          <i class="bi bi-check-lg me-1"></i>Enregistrer la décision
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const _role  = Api.getUser()?.role;
+const isAdmin = ['ADMINISTRATEUR_SYSTEME', 'SUPERVISEUR_DGI'].includes(_role);
+let modalPlainte;
+let statutCourant = 'OUVERTE';
+
+document.addEventListener('DOMContentLoaded', () => {
+  modalPlainte = new bootstrap.Modal(document.getElementById('modal-plainte'));
+  chargerPlaintes();
+});
+
+function filtrer(statut, link) {
+  document.querySelectorAll('#tabs-plainte .nav-link').forEach(l => l.classList.remove('active'));
+  link.classList.add('active');
+  statutCourant = statut;
+
+  if (statut === 'NOUVELLE') {
+    document.getElementById('panel-liste').classList.add('d-none');
+    document.getElementById('panel-nouvelle').classList.remove('d-none');
+  } else {
+    document.getElementById('panel-liste').classList.remove('d-none');
+    document.getElementById('panel-nouvelle').classList.add('d-none');
+    chargerPlaintes(statut);
+  }
+}
+
+async function chargerPlaintes(statut = 'OUVERTE') {
+  const el = document.getElementById('list-plaintes');
+  el.innerHTML = '<div class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Chargement…</div>';
+
+  const data = await Api.get(`/plaintes/?statut=${statut}`);
+  const items = Array.isArray(data) ? data : data?.results || [];
+
+  // Mise à jour badges
+  const allData = await Api.get('/plaintes/');
+  const all = Array.isArray(allData) ? allData : allData?.results || [];
+  document.getElementById('badge-ouvertes').textContent  = all.filter(p => p.statut === 'OUVERTE').length;
+  document.getElementById('badge-encours').textContent   = all.filter(p => p.statut === 'EN_COURS').length;
+
+  if (!items.length) {
+    el.innerHTML = '<div class="text-center text-muted py-4 small">Aucune plainte dans cette catégorie.</div>';
+    return;
+  }
+
+  el.innerHTML = `<div class="d-flex flex-column gap-2">
+    ${items.map(p => `
+      <div class="card p-3">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+          <div>
+            <span class="badge bg-secondary font-monospace me-2">${p.reference}</span>
+            <span class="${statutPlainteCls(p.statut)}">${p.statut.replace('_', ' ')}</span>
+          </div>
+          <div class="text-muted small">${new Date(p.date_creation).toLocaleDateString('fr-FR')}</div>
+        </div>
+        <div class="fw-semibold mt-1">${p.sujet}</div>
+        <div class="small text-muted mt-1">
+          <i class="bi bi-person me-1"></i>${p.nom_plaignant} — ${p.telephone}
+          ${p.automobile_immat ? ` | <i class="bi bi-car-front me-1"></i>${p.automobile_immat}` : ''}
+        </div>
+        <div class="small mt-2 text-truncate" style="max-width:600px;">${p.description}</div>
+        ${p.reponse_admin ? `
+          <div class="mt-2 p-2 rounded small" style="background:#f0fdf4; border-left:3px solid #0F766E;">
+            <strong>Réponse :</strong> ${p.reponse_admin}
+            ${p.traite_par_nom ? `<span class="text-muted ms-2">— ${p.traite_par_nom}</span>` : ''}
+          </div>` : ''}
+        ${isAdmin && p.statut !== 'RESOLUE' && p.statut !== 'REJETEE' ? `
+          <div class="mt-2">
+            <button class="btn btn-sm btn-primary-custom" onclick="ouvrirTraitement(${JSON.stringify(p).replace(/"/g,'&quot;')})">
+              <i class="bi bi-pencil me-1"></i>Traiter
+            </button>
+          </div>` : ''}
+      </div>`).join('')}
+  </div>`;
+}
+
+function statutPlainteCls(s) {
+  return {
+    OUVERTE:  'badge bg-danger',
+    EN_COURS: 'badge bg-warning text-dark',
+    RESOLUE:  'badge bg-success',
+    REJETEE:  'badge bg-secondary',
+  }[s] || 'badge bg-secondary';
+}
+
+function ouvrirTraitement(p) {
+  document.getElementById('modal-plainte-id').value = p.id;
+  document.getElementById('modal-plainte-reponse').value = p.reponse_admin || '';
+  document.getElementById('modal-plainte-alert').classList.add('d-none');
+  document.getElementById('modal-plainte-detail').innerHTML = `
+    <div class="p-3 rounded small" style="background:#f8fafc; border:1px solid #e2e8f0;">
+      <div class="fw-semibold mb-1">${p.sujet}</div>
+      <div class="text-muted">${p.description}</div>
+      <div class="mt-2 text-muted">
+        Plaignant : ${p.nom_plaignant} (${p.telephone})
+        ${p.automobile_immat ? ` | Véhicule : ${p.automobile_immat}` : ''}
+      </div>
+    </div>`;
+  modalPlainte.show();
+}
+
+async function traiterPlainte() {
+  const id      = document.getElementById('modal-plainte-id').value;
+  const statut  = document.getElementById('modal-plainte-statut').value;
+  const reponse = document.getElementById('modal-plainte-reponse').value.trim();
+  const alertEl = document.getElementById('modal-plainte-alert');
+
+  if (!reponse) {
+    alertEl.className = 'alert alert-danger py-2 small';
+    alertEl.textContent = 'La réponse est obligatoire.';
+    alertEl.classList.remove('d-none');
+    return;
+  }
+
+  const result = await Api.post(`/plaintes/${id}/traiter/`, { statut, reponse });
+  if (result?.ok) {
+    modalPlainte.hide();
+    showToast('Plainte traitée avec succès.');
+    chargerPlaintes(statutCourant);
+  } else {
+    alertEl.className = 'alert alert-danger py-2 small';
+    alertEl.textContent = result?.data?.error || 'Erreur lors du traitement.';
+    alertEl.classList.remove('d-none');
+  }
+}
+
+async function rechercherAutoplainte() {
+  const immat = document.getElementById('plt-immat').value.trim().toUpperCase();
+  const infoEl = document.getElementById('plt-auto-info');
+  if (!immat) return;
+  const result = await Api.get(`/agent/rechercher/?immatriculation=${encodeURIComponent(immat)}`);
+  if (result) {
+    document.getElementById('plt-auto-id').value = result.id;
+    infoEl.textContent = `✓ ${result.immatriculation} — ${result.marque} — ${result.proprietaire}`;
+    infoEl.className = 'form-text text-success';
+    infoEl.classList.remove('d-none');
+  } else {
+    infoEl.textContent = 'Véhicule introuvable.';
+    infoEl.className = 'form-text text-danger';
+    infoEl.classList.remove('d-none');
+  }
+}
+
+async function soumettrePlainte() {
+  const alertEl = document.getElementById('plt-alert');
+  const data = {
+    nom_plaignant: document.getElementById('plt-nom').value.trim(),
+    telephone:     document.getElementById('plt-telephone').value.trim(),
+    sujet:         document.getElementById('plt-sujet').value.trim(),
+    description:   document.getElementById('plt-description').value.trim(),
+  };
+  const autoId = document.getElementById('plt-auto-id').value;
+  if (autoId) data.automobile = autoId;
+
+  if (!data.nom_plaignant || !data.telephone || !data.sujet || !data.description) {
+    alertEl.className = 'alert alert-danger py-2 small mt-3';
+    alertEl.textContent = 'Tous les champs obligatoires (*) doivent être remplis.';
+    alertEl.classList.remove('d-none');
+    return;
+  }
+
+  const result = await Api.post('/plaintes/', data);
+  if (result?.ok) {
+    alertEl.className = 'alert alert-success py-2 small mt-3';
+    alertEl.innerHTML = `<i class="bi bi-check-circle me-2"></i>Plainte enregistrée — Réf : <strong>${result.data?.reference}</strong>. Un SMS de confirmation a été envoyé.`;
+    alertEl.classList.remove('d-none');
+    ['plt-nom','plt-telephone','plt-immat','plt-sujet','plt-description','plt-auto-id'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('plt-auto-info').classList.add('d-none');
+  } else {
+    alertEl.className = 'alert alert-danger py-2 small mt-3';
+    alertEl.textContent = result?.data?.error || 'Erreur lors de la soumission.';
+    alertEl.classList.remove('d-none');
+  }
+}
+</script>
+{% endblock %}

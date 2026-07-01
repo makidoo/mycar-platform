@@ -295,6 +295,50 @@ class DemandeTransfert(models.Model):
         return f"Transfert {self.automobile.immatriculation} → {self.nouveau_nom} {self.nouveau_prenom} ({self.statut})"
 
 
+class StatutPlainte(models.TextChoices):
+    OUVERTE   = 'OUVERTE',   'Ouverte'
+    EN_COURS  = 'EN_COURS',  'En cours de traitement'
+    RESOLUE   = 'RESOLUE',   'Résolue'
+    REJETEE   = 'REJETEE',   'Rejetée'
+
+
+class Plainte(models.Model):
+    """Système de plaintes et litiges des contribuables."""
+    reference        = models.CharField(max_length=20, unique=True, blank=True)
+    automobile       = models.ForeignKey(Automobile, null=True, blank=True, on_delete=models.SET_NULL, related_name='plaintes')
+    # Contact plaignant (pas nécessairement un utilisateur système)
+    nom_plaignant    = models.CharField(max_length=100)
+    telephone        = models.CharField(max_length=20)
+    sujet            = models.CharField(max_length=200)
+    description      = models.TextField()
+    statut           = models.CharField(max_length=20, choices=StatutPlainte.choices, default=StatutPlainte.OUVERTE)
+    reponse_admin    = models.TextField(blank=True)
+    traite_par       = models.ForeignKey(Utilisateur, null=True, blank=True, on_delete=models.SET_NULL, related_name='plaintes_traitees')
+    date_creation    = models.DateTimeField(auto_now_add=True)
+    date_traitement  = models.DateTimeField(null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        if not self.reference:
+            self.reference = 'PLT-' + get_random_string(8, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.reference} — {self.sujet[:50]} ({self.statut})"
+
+
+class NotificationLog(models.Model):
+    """Trace tous les SMS/emails envoyés (réels ou simulés)."""
+    canal        = models.CharField(max_length=10, default='SMS')
+    destinataire = models.CharField(max_length=50)
+    message      = models.TextField()
+    contexte     = models.CharField(max_length=100, blank=True)
+    statut       = models.CharField(max_length=20, default='MOCK')
+    date_envoi   = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"[{self.canal}] {self.destinataire} — {self.contexte} ({self.statut})"
+
+
 class HistoriqueConsultation(models.Model):
     utilisateur = models.ForeignKey(Utilisateur, null=True, on_delete=models.SET_NULL)
     automobile = models.ForeignKey(Automobile, on_delete=models.CASCADE, related_name='historique')
