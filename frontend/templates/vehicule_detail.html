@@ -110,12 +110,34 @@ async function loadVehicle() {
     <div class="row g-3">
       <!-- Colonne gauche : infos + QR -->
       <div class="col-lg-4">
-        <!-- Statut card -->
+        <!-- Statut vignette -->
         <div class="stat-card bg-${statutClass} mb-3 text-center">
           <div style="font-size:3rem;"><i class="bi bi-${statutIcon}"></i></div>
           <div class="stat-value">${s?.statut || 'INCONNU'}</div>
-          <div class="stat-label">
-            Valide jusqu'au ${formatDate(s?.date_fin_validite)}
+          <div class="stat-label">Valide jusqu'au ${formatDate(s?.date_fin_validite)}</div>
+        </div>
+
+        <!-- Statuts opérationnels -->
+        <div class="card p-3 mb-3">
+          <div class="section-title mb-2">Statuts</div>
+          <div class="d-flex flex-column gap-2 small">
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="text-muted">Approbation</span>
+              <span class="${{APPROUVE:'badge bg-success', EN_ATTENTE:'badge bg-warning text-dark', REJETE:'badge bg-danger', SUSPENDU:'badge bg-secondary'}[auto.statut_approbation] || 'badge bg-secondary'}">
+                ${auto.statut_approbation || '—'}
+              </span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="text-muted">Vignette physique</span>
+              ${s?.statut_physique === 'ATTRIBUE'
+                ? '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Attribuée</span>'
+                : '<span class="badge bg-warning text-dark"><i class="bi bi-hourglass me-1"></i>Non attribuée</span>'}
+            </div>
+            ${auto.notes_approbation ? `
+            <div class="pt-1 border-top">
+              <div class="text-muted" style="font-size:.7rem;">Notes approbation</div>
+              <div style="font-size:.78rem;">${auto.notes_approbation}</div>
+            </div>` : ''}
           </div>
         </div>
 
@@ -177,6 +199,37 @@ async function loadVehicle() {
           </div>
         </div>
 
+        <!-- Approbation (admin uniquement) -->
+        ${Api.getUser()?.role === 'ADMINISTRATEUR_SYSTEME' && auto.statut_approbation === 'EN_ATTENTE' ? `
+        <div class="card p-3 mb-3" style="border:2px solid #f59e0b;">
+          <div class="section-title text-warning"><i class="bi bi-exclamation-triangle me-2"></i>En attente d'approbation</div>
+          <p class="small text-muted mb-3">Ce véhicule doit être approuvé avant que le propriétaire puisse payer sa vignette.</p>
+          <div class="mb-3">
+            <label class="form-label small">Notes (optionnel)</label>
+            <textarea id="notes-approbation" class="form-control form-control-sm" rows="2" placeholder="Motif de refus ou remarque…"></textarea>
+          </div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-success btn-sm flex-fill" onclick="deciderApprobation('APPROUVE')">
+              <i class="bi bi-check-circle me-1"></i>Approuver
+            </button>
+            <button class="btn btn-danger btn-sm flex-fill" onclick="deciderApprobation('REJETE')">
+              <i class="bi bi-x-circle me-1"></i>Rejeter
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="deciderApprobation('SUSPENDU')">
+              <i class="bi bi-pause-circle me-1"></i>Suspendre
+            </button>
+          </div>
+          <div id="appro-alert" class="alert d-none py-2 small mt-2"></div>
+        </div>` : ''}
+
+        <!-- Paiements -->
+        <div class="card p-3 mb-3">
+          <div class="section-title">Paiements</div>
+          <div id="paiements-list">
+            <div class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></div>
+          </div>
+        </div>
+
         <!-- Historique statuts -->
         <div class="card p-3">
           <div class="section-title">Historique des statuts</div>
@@ -190,6 +243,7 @@ async function loadVehicle() {
   document.getElementById('btn-modifier-statut').onclick = () => modalStatut.show();
 
   loadHistorique();
+  loadPaiements();
 }
 
 function infoRow(label, value) {
@@ -198,6 +252,45 @@ function infoRow(label, value) {
       <div class="text-muted small mb-0">${label}</div>
       <div>${value ?? '—'}</div>
     </div>`;
+}
+
+async function deciderApprobation(decision) {
+  const notes  = document.getElementById('notes-approbation')?.value.trim() || '';
+  const alertEl = document.getElementById('appro-alert');
+  const result = await Api.post(`/automobiles/${vehicleId}/approuver/`, { decision, notes });
+  if (result?.ok) {
+    showToast(`Véhicule ${decision.toLowerCase()} avec succès.`);
+    loadVehicle();
+  } else {
+    alertEl.className = 'alert alert-danger py-2 small mt-2';
+    alertEl.textContent = result?.data?.error || 'Erreur lors de l\'approbation.';
+    alertEl.classList.remove('d-none');
+  }
+}
+
+async function loadPaiements() {
+  const el = document.getElementById('paiements-list');
+  if (!el) return;
+  const data = await Api.get(`/automobiles/${vehicleId}/paiements/`);
+  const list = Array.isArray(data) ? data : data?.results || [];
+  if (!list.length) {
+    el.innerHTML = '<div class="text-muted small text-center py-2">Aucun paiement enregistré.</div>';
+    return;
+  }
+  const opLabels = { NITA:'NITA', AMANATA:'Amanata', ORANGE_MONEY:'ZamaniCash', AIRTEL_MONEY:'Airtel Money' };
+  el.innerHTML = '<div class="d-flex flex-column gap-2">' +
+    list.map(p => `
+      <div class="d-flex align-items-center gap-3 p-2 rounded" style="background:#f8fafc;">
+        <div class="flex-fill">
+          <div class="small fw-semibold font-monospace">${p.reference}</div>
+          <div class="text-muted" style="font-size:.73rem;">${opLabels[p.operateur]||p.operateur} — ${p.telephone}</div>
+          <div class="text-muted" style="font-size:.73rem;">${p.date_confirmation ? new Date(p.date_confirmation).toLocaleDateString('fr-FR') : new Date(p.date_initiation).toLocaleDateString('fr-FR')}</div>
+        </div>
+        <div class="text-end">
+          <div class="small fw-bold">${Number(p.montant).toLocaleString('fr-FR')} FCFA</div>
+          <span class="badge ${p.statut==='CONFIRME'?'bg-success':p.statut==='ECHOUE'?'bg-danger':'bg-warning text-dark'}" style="font-size:.65rem;">${p.statut}</span>
+        </div>
+      </div>`).join('') + '</div>';
 }
 
 async function loadHistorique() {

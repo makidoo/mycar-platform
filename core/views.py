@@ -132,6 +132,14 @@ class AutomobileViewSet(viewsets.ModelViewSet):
         serializer = StatutVignetteSerializer(statuts, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['get'])
+    def paiements(self, request, pk=None):
+        """Liste des paiements d'un véhicule"""
+        automobile = self.get_object()
+        paiements = Paiement.objects.filter(automobile=automobile).order_by('-date_initiation')
+        serializer = PaiementSerializer(paiements, many=True)
+        return Response(serializer.data)
+
 
 class StatutVignetteViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = StatutVignette.objects.select_related('automobile', 'operateur').all()
