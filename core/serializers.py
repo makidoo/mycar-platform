@@ -2,7 +2,7 @@ from rest_framework import serializers
 from .models import (
     Region, Utilisateur, Automobile,
     StatutVignette, CodeSecurite, HistoriqueConsultation, Paiement,
-    ParametrePlateforme,
+    ParametrePlateforme, DemandeTransfert,
 )
 
 
@@ -44,9 +44,32 @@ class StatutVignetteSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'automobile', 'statut', 'date_debut_validite', 'date_fin_validite',
             'code_securite', 'type_modification', 'operateur', 'mobile_payment_ref',
+            'statut_physique', 'numero_recu', 'notes_admin',
             'date_creation', 'est_valide',
         ]
         read_only_fields = ['code_securite', 'date_creation']
+
+
+class DemandeTransfertSerializer(serializers.ModelSerializer):
+    automobile_immat = serializers.CharField(source='automobile.immatriculation', read_only=True)
+    traite_par_nom   = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DemandeTransfert
+        fields = [
+            'id', 'automobile', 'automobile_immat',
+            'ancien_nom', 'ancien_prenom', 'ancien_telephone',
+            'nouveau_nom', 'nouveau_prenom', 'nouveau_telephone',
+            'motif', 'statut', 'notes_admin',
+            'traite_par', 'traite_par_nom',
+            'date_demande', 'date_traitement',
+        ]
+        read_only_fields = ['statut', 'traite_par', 'date_demande', 'date_traitement']
+
+    def get_traite_par_nom(self, obj):
+        if obj.traite_par:
+            return f"{obj.traite_par.nom} {obj.traite_par.prenom}"
+        return None
 
 
 class AutomobileReadSerializer(serializers.ModelSerializer):
@@ -58,8 +81,10 @@ class AutomobileReadSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'immatriculation', 'pays', 'region', 'nom', 'prenom', 'telephone',
             'type_vehicule', 'marque', 'modele', 'energie', 'puissance_cv',
-            'montant_taxe', 'numero_chassis', 'date_mise_circulation',
-            'date_edition_carte_grise', 'statut_actuel', 'date_creation',
+            'annee_fabrication', 'montant_taxe', 'numero_chassis',
+            'date_mise_circulation', 'date_edition_carte_grise',
+            'statut_approbation', 'notes_approbation',
+            'statut_actuel', 'date_creation',
         ]
 
 
@@ -69,8 +94,8 @@ class AutomobileWriteSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'immatriculation', 'pays', 'region', 'nom', 'prenom', 'telephone',
             'type_vehicule', 'marque', 'modele', 'energie', 'puissance_cv',
-            'montant_taxe', 'numero_chassis', 'date_mise_circulation',
-            'date_edition_carte_grise',
+            'annee_fabrication', 'montant_taxe', 'numero_chassis',
+            'date_mise_circulation', 'date_edition_carte_grise',
         ]
 
 

@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Certificat vignette{% endblock %}
+{% block page_title %}<i class="bi bi-award me-2"></i>Certificat numérique{% endblock %}
+
+{% block head %}
+<style>
+  @media print {
+    .bandeau-officiel, .sidebar, .topbar, .btn-print, .sidebar-backdrop,
+    nav, .breadcrumb, #topbar-right { display: none !important; }
+    .main-content { margin-left: 0 !important; }
+    .content-area { padding: 0 !important; }
+    .certificat-card { box-shadow: none !important; border: 2px solid #0F766E !important; }
+    body { background: white !important; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mb-3 d-flex gap-2 btn-print">
+  <a href="/vehicules/" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Retour
+  </a>
+  <button class="btn btn-sm btn-primary-custom" onclick="window.print()">
+    <i class="bi bi-printer me-1"></i>Imprimer / Enregistrer PDF
+  </button>
+</div>
+
+<div id="loading" class="text-center py-5 text-muted">
+  <span class="spinner-border me-2"></span>Génération du certificat…
+</div>
+
+<div id="certificat-container" class="d-none" style="max-width:720px; margin:0 auto;">
+  <div class="certificat-card card p-4" style="border:2px solid #0F766E; border-radius:12px;">
+
+    <!-- En-tête officiel -->
+    <div class="text-center mb-4 pb-3" style="border-bottom:2px solid #E05D26;">
+      <img src="{% static 'images/logo-dgi.png' %}" alt="DGI" style="height:60px;" class="mb-2">
+      <div style="font-size:.8rem; color:#666;">République du Niger — Ministère des Finances</div>
+      <h4 style="color:#0F766E; font-weight:700; margin:.5rem 0 .25rem;">
+        CERTIFICAT NUMÉRIQUE DE VIGNETTE AUTOMOBILE
+      </h4>
+      <div class="text-muted small" id="cert-genere-le"></div>
+    </div>
+
+    <!-- Statut vignette (badge centré) -->
+    <div class="text-center mb-4">
+      <div id="cert-statut-badge" style="display:inline-block; padding:.75rem 2rem; border-radius:8px; font-size:1.1rem; font-weight:700;"></div>
+      <div id="cert-physique-badge" class="mt-2"></div>
+    </div>
+
+    <div class="row g-4">
+      <!-- QR Code -->
+      <div class="col-md-4 text-center">
+        <img id="cert-qr" src="" alt="QR Code vignette" style="width:100%; max-width:180px; border:1px solid #e5e7eb; border-radius:8px; padding:8px;">
+        <div class="small text-muted mt-1">Scannez pour vérifier</div>
+        <div class="font-monospace small mt-1" id="cert-code-securite" style="color:#0F766E; font-size:.7rem; word-break:break-all;"></div>
+      </div>
+
+      <!-- Infos véhicule -->
+      <div class="col-md-8">
+        <div class="fw-bold mb-2" style="color:#0F766E; border-bottom:1px solid #e5e7eb; padding-bottom:.5rem;">
+          <i class="bi bi-car-front me-2"></i>Informations du véhicule
+        </div>
+        <table class="table table-sm small mb-0">
+          <tbody id="cert-vehicule-infos"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Validité vignette -->
+    <div class="row g-3 mt-2 p-3 rounded" style="background:#f0fdf4; border:1px solid #bbf7d0;">
+      <div class="col-4 text-center">
+        <div class="text-muted small">Début validité</div>
+        <div class="fw-bold" id="cert-date-debut"></div>
+      </div>
+      <div class="col-4 text-center">
+        <div class="text-muted small">Fin de validité</div>
+        <div class="fw-bold" id="cert-date-fin"></div>
+      </div>
+      <div class="col-4 text-center">
+        <div class="text-muted small">Type</div>
+        <div class="fw-bold" id="cert-type-modif"></div>
+      </div>
+    </div>
+
+    <!-- Paiement -->
+    <div class="mt-3 p-3 rounded" style="background:#fff7ed; border:1px solid #fed7aa;" id="cert-paiement-section">
+      <div class="fw-bold mb-2 small" style="color:#E05D26;"><i class="bi bi-receipt me-2"></i>Référence de paiement</div>
+      <div class="row g-2 small" id="cert-paiement-infos"></div>
+    </div>
+
+    <!-- Pied de certificat -->
+    <div class="mt-4 pt-3 text-center small text-muted" style="border-top:1px solid #e5e7eb;">
+      <div>Ce document est un certificat numérique officiel émis par la DGI — République du Niger.</div>
+      <div>La vignette physique doit être présente dans le véhicule.</div>
+      <div class="mt-1">MY CAR Platform © {{ "now"|date:"Y" }} — DGI Niger</div>
+    </div>
+
+  </div>
+</div>
+
+<div id="error-panel" class="alert alert-danger d-none mt-3"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const vehicleId = window.location.pathname.replace(/\/$/, '').split('/').pop();
+
+const STATUT_STYLES = {
+  VERT:   { bg: '#dcfce7', color: '#166534', icon: '✓', label: 'VALIDE' },
+  ORANGE: { bg: '#fff7ed', color: '#9a3412', icon: '⚠', label: 'À RENOUVELER' },
+  ROUGE:  { bg: '#fef2f2', color: '#991b1b', icon: '✗', label: 'EXPIRÉ / NON CONFORME' },
+};
+
+const TYPE_LABELS = {
+  AUTOMATIQUE: 'Automatique',
+  MANUELLE:    'Manuelle (admin)',
+};
+
+async function chargerCertificat() {
+  const data = await Api.get(`/automobiles/${vehicleId}/certificat/`);
+  document.getElementById('loading').classList.add('d-none');
+
+  if (!data) {
+    document.getElementById('error-panel').textContent = 'Impossible de charger le certificat.';
+    document.getElementById('error-panel').classList.remove('d-none');
+    return;
+  }
+
+  const { vehicule, vignette, paiement, qr_code_base64, genere_le } = data;
+
+  document.getElementById('certificat-container').classList.remove('d-none');
+  document.getElementById('cert-genere-le').textContent =
+    `Généré le ${new Date(genere_le).toLocaleString('fr-FR')}`;
+
+  // Statut badge
+  const st = STATUT_STYLES[vignette.statut] || STATUT_STYLES.ROUGE;
+  document.getElementById('cert-statut-badge').innerHTML =
+    `<span style="background:${st.bg}; color:${st.color}; padding:.5rem 1.5rem; border-radius:6px; font-size:1rem; font-weight:700;">${st.icon} ${st.label}</span>`;
+
+  // Statut physique
+  const physLabel = vignette.statut_physique === 'ATTRIBUE'
+    ? '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Vignette physique : Attribuée</span>'
+    : '<span class="badge bg-warning text-dark"><i class="bi bi-hourglass me-1"></i>Vignette physique : Non attribuée</span>';
+  document.getElementById('cert-physique-badge').innerHTML = physLabel;
+
+  // QR
+  document.getElementById('cert-qr').src = `data:image/png;base64,${qr_code_base64}`;
+  document.getElementById('cert-code-securite').textContent = `Code : ${vignette.code_securite}`;
+
+  // Infos véhicule
+  const rows = [
+    ['Immatriculation', `<strong>${vehicule.immatriculation}</strong>`],
+    ['Région', vehicule.region],
+    ['Propriétaire', `${vehicule.proprietaire}`],
+    ['Téléphone', vehicule.telephone],
+    ['Marque / Modèle', vehicule.marque],
+    ['Type', vehicule.type_vehicule],
+    ['Énergie', vehicule.energie || '—'],
+    ['Puissance', vehicule.puissance_cv ? `${vehicule.puissance_cv} CV` : '—'],
+    ['Année fabrication', vehicule.annee_fabrication || '—'],
+    ['N° Châssis', `<code style="font-size:.75rem;">${vehicule.numero_chassis}</code>`],
+  ];
+  document.getElementById('cert-vehicule-infos').innerHTML =
+    rows.map(([l,v]) => `<tr><td class="text-muted pe-3" style="white-space:nowrap;">${l}</td><td>${v}</td></tr>`).join('');
+
+  // Dates validité
+  document.getElementById('cert-date-debut').textContent = formatDate(vignette.date_debut);
+  document.getElementById('cert-date-fin').textContent   = formatDate(vignette.date_fin);
+  document.getElementById('cert-type-modif').textContent = TYPE_LABELS[vignette.type_modification] || vignette.type_modification;
+
+  // Paiement
+  if (paiement.reference) {
+    document.getElementById('cert-paiement-infos').innerHTML = `
+      <div class="col-6"><div class="text-muted">Référence</div><div class="font-monospace">${paiement.reference}</div></div>
+      <div class="col-6"><div class="text-muted">Montant</div><div class="fw-bold">${Number(paiement.montant).toLocaleString('fr-FR')} FCFA</div></div>
+      <div class="col-6"><div class="text-muted">Opérateur</div><div>${paiement.operateur || '—'}</div></div>
+      <div class="col-6"><div class="text-muted">Date</div><div>${paiement.date ? new Date(paiement.date).toLocaleDateString('fr-FR') : '—'}</div></div>
+    `;
+  } else {
+    document.getElementById('cert-paiement-section').innerHTML =
+      `<div class="text-muted small"><i class="bi bi-info-circle me-1"></i>Aucun paiement numérique enregistré (vignette initialisée manuellement).</div>`;
+  }
+}
+
+function formatDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('fr-FR', { day:'2-digit', month:'long', year:'numeric' });
+}
+
+chargerCertificat();
+</script>
+{% endblock %}

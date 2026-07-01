@@ -6,11 +6,12 @@ from django.utils import timezone
 
 
 class RoleUtilisateur(models.TextChoices):
-    ADMIN_SYS = 'ADMINISTRATEUR_SYSTEME', 'Administrateur Système'
-    SUP_DGI = 'SUPERVISEUR_DGI', 'Superviseur DGI'
-    AGENT_DGI = 'AGENT_DGI', 'Agent DGI'
-    POLICE = 'POLICE', 'Police'
-    CONTRIBUABLE = 'CONTRIBUABLE', 'Contribuable'
+    ADMIN_SYS        = 'ADMINISTRATEUR_SYSTEME',  'Administrateur Système'
+    SUP_DGI          = 'SUPERVISEUR_DGI',          'Superviseur DGI'
+    AGENT_DGI        = 'AGENT_DGI',                'Agent DGI'
+    AGENT_DISTRIB    = 'AGENT_DISTRIBUTION',        'Agent de distribution'
+    POLICE           = 'POLICE',                   'Police'
+    CONTRIBUABLE     = 'CONTRIBUABLE',             'Contribuable'
 
 
 class TypeVehicule(models.TextChoices):
@@ -262,6 +263,36 @@ class ParametrePlateforme(models.Model):
 
     def __str__(self):
         return f"{self.cle} = {self.valeur}"
+
+
+class StatutTransfert(models.TextChoices):
+    EN_ATTENTE = 'EN_ATTENTE', 'En attente'
+    APPROUVE   = 'APPROUVE',   'Approuvé'
+    REJETE     = 'REJETE',     'Rejeté'
+
+
+class DemandeTransfert(models.Model):
+    """Demande de transfert de propriété d'un véhicule vers un nouveau propriétaire."""
+    automobile        = models.ForeignKey(Automobile, on_delete=models.CASCADE, related_name='transferts')
+    # Ancien propriétaire (extrait automatiquement du véhicule)
+    ancien_nom        = models.CharField(max_length=100)
+    ancien_prenom     = models.CharField(max_length=100)
+    ancien_telephone  = models.CharField(max_length=20)
+    # Nouveau propriétaire
+    nouveau_nom       = models.CharField(max_length=100)
+    nouveau_prenom    = models.CharField(max_length=100)
+    nouveau_telephone = models.CharField(max_length=20)
+    # Motif + documents
+    motif             = models.TextField(blank=True)
+    statut            = models.CharField(max_length=20, choices=StatutTransfert.choices, default=StatutTransfert.EN_ATTENTE)
+    notes_admin       = models.TextField(blank=True)
+    # Opérateur ayant traité
+    traite_par        = models.ForeignKey(Utilisateur, null=True, blank=True, on_delete=models.SET_NULL, related_name='transferts_traites')
+    date_demande      = models.DateTimeField(auto_now_add=True)
+    date_traitement   = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"Transfert {self.automobile.immatriculation} → {self.nouveau_nom} {self.nouveau_prenom} ({self.statut})"
 
 
 class HistoriqueConsultation(models.Model):

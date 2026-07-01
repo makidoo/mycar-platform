@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Transferts de propriété{% endblock %}
+{% block page_title %}<i class="bi bi-arrow-left-right me-2"></i>Transferts de propriété{% endblock %}
+
+{% block content %}
+
+<!-- Onglets -->
+<ul class="nav nav-tabs mb-3" id="tabs-transfert">
+  <li class="nav-item">
+    <a class="nav-link active" href="#" onclick="afficherOnglet('en-attente', this)">
+      En attente <span class="badge bg-warning text-dark ms-1" id="badge-attente">0</span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link" href="#" onclick="afficherOnglet('traites', this)">
+      Traités
+    </a>
+  </li>
+  <li class="nav-item ms-auto" id="onglet-nouvelle">
+    <a class="nav-link text-primary" href="#" onclick="afficherOnglet('nouvelle', this)">
+      <i class="bi bi-plus-circle me-1"></i>Nouvelle demande
+    </a>
+  </li>
+</ul>
+
+<!-- En attente -->
+<div id="panel-en-attente">
+  <div id="list-attente">
+    <div class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Chargement…</div>
+  </div>
+</div>
+
+<!-- Traités -->
+<div id="panel-traites" class="d-none">
+  <div id="list-traites">
+    <div class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Chargement…</div>
+  </div>
+</div>
+
+<!-- Nouvelle demande -->
+<div id="panel-nouvelle" class="d-none">
+  <div class="card p-3" style="max-width:600px;">
+    <div class="section-title">Nouvelle demande de transfert</div>
+    <div class="mb-3">
+      <label class="form-label small">Immatriculation du véhicule *</label>
+      <div class="input-group">
+        <input type="text" id="new-immat" class="form-control font-monospace text-uppercase" placeholder="AB-1234-NE">
+        <button class="btn btn-outline-secondary" onclick="rechercherPourTransfert()">
+          <i class="bi bi-search"></i>
+        </button>
+      </div>
+    </div>
+    <div id="vehicule-trouve" class="alert alert-info py-2 small d-none mb-3"></div>
+    <input type="hidden" id="new-automobile-id">
+
+    <div class="row g-3">
+      <div class="col-6">
+        <label class="form-label small">Nom nouveau propriétaire *</label>
+        <input type="text" id="new-nom" class="form-control">
+      </div>
+      <div class="col-6">
+        <label class="form-label small">Prénom *</label>
+        <input type="text" id="new-prenom" class="form-control">
+      </div>
+      <div class="col-6">
+        <label class="form-label small">Téléphone *</label>
+        <input type="text" id="new-telephone" class="form-control" placeholder="+227 XX XX XX XX">
+      </div>
+      <div class="col-12">
+        <label class="form-label small">Motif (vente, héritage…)</label>
+        <textarea id="new-motif" class="form-control" rows="2"></textarea>
+      </div>
+    </div>
+    <div id="new-alert" class="alert d-none py-2 small mt-3"></div>
+    <button class="btn btn-primary-custom mt-3" onclick="soumettreDemande()">
+      <i class="bi bi-send me-2"></i>Soumettre la demande
+    </button>
+  </div>
+</div>
+
+<!-- Modal traitement admin -->
+<div class="modal fade" id="modal-traitement" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Traiter la demande de transfert</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="modal-infos-transfert" class="mb-3"></div>
+        <input type="hidden" id="modal-transfert-id">
+        <div class="mb-3">
+          <label class="form-label small">Notes / décision</label>
+          <textarea id="modal-notes" class="form-control" rows="2" placeholder="Motif d'approbation ou de rejet…"></textarea>
+        </div>
+        <div id="modal-alert-traitement" class="alert d-none py-2 small"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button class="btn btn-danger" onclick="traiterTransfert('REJETE')">
+          <i class="bi bi-x-circle me-1"></i>Rejeter
+        </button>
+        <button class="btn btn-success" onclick="traiterTransfert('APPROUVE')">
+          <i class="bi bi-check-circle me-1"></i>Approuver
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const _userRole = Api.getUser()?.role;
+const isAdmin   = _userRole === 'ADMINISTRATEUR_SYSTEME';
+let modalTraitement;
+
+document.addEventListener('DOMContentLoaded', () => {
+  modalTraitement = new bootstrap.Modal(document.getElementById('modal-traitement'));
+  // Masquer "Nouvelle demande" pour admin (il traite, ne crée pas)
+  if (isAdmin) document.getElementById('onglet-nouvelle').classList.add('d-none');
+  chargerTransferts();
+});
+
+function afficherOnglet(id, link) {
+  document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+  link.classList.add('active');
+  ['en-attente','traites','nouvelle'].forEach(p =>
+    document.getElementById(`panel-${p}`).classList.add('d-none')
+  );
+  document.getElementById(`panel-${id}`).classList.remove('d-none');
+}
+
+async function chargerTransferts() {
+  const data = await Api.get('/transferts/');
+  const items = Array.isArray(data) ? data : data?.results || [];
+
+  const attente  = items.filter(t => t.statut === 'EN_ATTENTE');
+  const traites  = items.filter(t => t.statut !== 'EN_ATTENTE');
+
+  document.getElementById('badge-attente').textContent = attente.length;
+  document.getElementById('list-attente').innerHTML  = renderListe(attente, true);
+  document.getElementById('list-traites').innerHTML  = renderListe(traites, false);
+}
+
+function renderListe(items, avecActions) {
+  if (!items.length) {
+    return '<div class="text-center text-muted py-4 small">Aucune demande.</div>';
+  }
+  return `<div class="d-flex flex-column gap-2">
+    ${items.map(t => `
+      <div class="card p-3">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+          <div>
+            <strong class="text-primary">${t.automobile_immat}</strong>
+            <span class="ms-2 ${statutCls(t.statut)}">${t.statut}</span>
+          </div>
+          <div class="text-muted small">${new Date(t.date_demande).toLocaleDateString('fr-FR')}</div>
+        </div>
+        <div class="row g-2 mt-1 small">
+          <div class="col-6">
+            <div class="text-muted">Ancien propriétaire</div>
+            <div>${t.ancien_nom} ${t.ancien_prenom}</div>
+          </div>
+          <div class="col-6">
+            <div class="text-muted">Nouveau propriétaire</div>
+            <div>${t.nouveau_nom} ${t.nouveau_prenom} — ${t.nouveau_telephone}</div>
+          </div>
+          ${t.motif ? `<div class="col-12"><div class="text-muted">Motif</div><div>${t.motif}</div></div>` : ''}
+          ${t.notes_admin ? `<div class="col-12"><div class="text-muted">Notes admin</div><div>${t.notes_admin}</div></div>` : ''}
+          ${t.traite_par_nom ? `<div class="col-6"><div class="text-muted">Traité par</div><div>${t.traite_par_nom}</div></div>` : ''}
+          ${t.date_traitement ? `<div class="col-6"><div class="text-muted">Date traitement</div><div>${new Date(t.date_traitement).toLocaleDateString('fr-FR')}</div></div>` : ''}
+        </div>
+        ${avecActions && isAdmin ? `
+          <div class="mt-2">
+            <button class="btn btn-sm btn-primary-custom" onclick="ouvrirModalTraitement(${JSON.stringify(t).replace(/"/g, '&quot;')})">
+              <i class="bi bi-pencil me-1"></i>Traiter cette demande
+            </button>
+          </div>` : ''}
+      </div>`).join('')}
+  </div>`;
+}
+
+function statutCls(s) {
+  return { EN_ATTENTE: 'badge bg-warning text-dark', APPROUVE: 'badge bg-success', REJETE: 'badge bg-danger' }[s] || 'badge bg-secondary';
+}
+
+function ouvrirModalTraitement(t) {
+  document.getElementById('modal-transfert-id').value = t.id;
+  document.getElementById('modal-notes').value = '';
+  document.getElementById('modal-alert-traitement').classList.add('d-none');
+  document.getElementById('modal-infos-transfert').innerHTML = `
+    <div class="small">
+      <div><strong>Véhicule :</strong> ${t.automobile_immat}</div>
+      <div><strong>De :</strong> ${t.ancien_nom} ${t.ancien_prenom} (${t.ancien_telephone})</div>
+      <div><strong>Vers :</strong> ${t.nouveau_nom} ${t.nouveau_prenom} (${t.nouveau_telephone})</div>
+      ${t.motif ? `<div><strong>Motif :</strong> ${t.motif}</div>` : ''}
+    </div>`;
+  modalTraitement.show();
+}
+
+async function traiterTransfert(decision) {
+  const id    = document.getElementById('modal-transfert-id').value;
+  const notes = document.getElementById('modal-notes').value.trim();
+  const alertEl = document.getElementById('modal-alert-traitement');
+
+  const result = await Api.post(`/transferts/${id}/traiter/`, { decision, notes });
+  if (result?.ok) {
+    modalTraitement.hide();
+    showToast(`Demande ${decision === 'APPROUVE' ? 'approuvée' : 'rejetée'} avec succès.`);
+    chargerTransferts();
+  } else {
+    alertEl.className = 'alert alert-danger py-2 small';
+    alertEl.textContent = result?.data?.error || 'Erreur lors du traitement.';
+    alertEl.classList.remove('d-none');
+  }
+}
+
+async function rechercherPourTransfert() {
+  const immat = document.getElementById('new-immat').value.trim().toUpperCase();
+  const infoEl = document.getElementById('vehicule-trouve');
+  if (!immat) return;
+  const result = await Api.get(`/agent/rechercher/?immatriculation=${encodeURIComponent(immat)}`);
+  if (result) {
+    document.getElementById('new-automobile-id').value = result.id;
+    infoEl.className = 'alert alert-info py-2 small mb-3';
+    infoEl.innerHTML = `<i class="bi bi-car-front me-2"></i><strong>${result.immatriculation}</strong> — ${result.marque} — Propriétaire actuel : ${result.proprietaire}`;
+    infoEl.classList.remove('d-none');
+  } else {
+    infoEl.className = 'alert alert-danger py-2 small mb-3';
+    infoEl.textContent = 'Véhicule introuvable.';
+    infoEl.classList.remove('d-none');
+  }
+}
+
+async function soumettreDemande() {
+  const alertEl = document.getElementById('new-alert');
+  const autoId  = document.getElementById('new-automobile-id').value;
+  const data = {
+    automobile:        autoId,
+    nouveau_nom:       document.getElementById('new-nom').value.trim(),
+    nouveau_prenom:    document.getElementById('new-prenom').value.trim(),
+    nouveau_telephone: document.getElementById('new-telephone').value.trim(),
+    motif:             document.getElementById('new-motif').value.trim(),
+  };
+
+  if (!autoId) {
+    alertEl.className = 'alert alert-danger py-2 small mt-3';
+    alertEl.textContent = 'Veuillez d\'abord rechercher le véhicule.';
+    alertEl.classList.remove('d-none');
+    return;
+  }
+
+  const result = await Api.post('/transferts/', data);
+  if (result?.ok) {
+    alertEl.className = 'alert alert-success py-2 small mt-3';
+    alertEl.textContent = 'Demande soumise avec succès. L\'administrateur système va la traiter.';
+    alertEl.classList.remove('d-none');
+    // Réinitialiser le formulaire
+    ['new-immat','new-nom','new-prenom','new-telephone','new-motif','new-automobile-id'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('vehicule-trouve').classList.add('d-none');
+    chargerTransferts();
+  } else {
+    alertEl.className = 'alert alert-danger py-2 small mt-3';
+    alertEl.textContent = result?.data?.error || 'Erreur lors de la soumission.';
+    alertEl.classList.remove('d-none');
+  }
+}
+</script>
+{% endblock %}

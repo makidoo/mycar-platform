@@ -19,4 +19,7 @@ urlpatterns = [
     path('contribuable/', TemplateView.as_view(template_name='contribuable.html'), name='contribuable'),
     path('panel/utilisateurs/', TemplateView.as_view(template_name='panel_utilisateurs.html'), name='panel_utilisateurs'),
     path('panel/parametres/',   TemplateView.as_view(template_name='panel_parametres.html'),   name='panel_parametres'),
+    path('vehicules/<int:pk>/certificat/', TemplateView.as_view(template_name='certificat.html'), name='certificat'),
+    path('distribution/', TemplateView.as_view(template_name='agent_distribution.html'), name='agent_distribution'),
+    path('transferts/',   TemplateView.as_view(template_name='transferts.html'),         name='transferts'),
 ]

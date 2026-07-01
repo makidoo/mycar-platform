@@ -18,25 +18,28 @@
   </div>
 </div>
 
-<!-- Modal modifier statut -->
+<!-- Modal modifier statut (Admin sys uniquement : ROUGE → VERT ou ORANGE) -->
 <div class="modal fade" id="modal-statut" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>Modifier le statut</h5>
+        <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>Modification manuelle du statut</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
+        <div class="alert alert-warning py-2 small mb-3">
+          <i class="bi bi-exclamation-triangle me-1"></i>
+          Réservé à l'Administrateur système. Uniquement depuis un statut <strong>ROUGE</strong>.
+        </div>
         <div class="mb-3">
-          <label class="form-label">Nouveau statut</label>
+          <label class="form-label">Transition autorisée</label>
           <select id="modal-nouveau-statut" class="form-select">
-            <option value="VERT">🟢 VERT — Valide</option>
-            <option value="ORANGE">🟠 ORANGE — Échéance imminente</option>
-            <option value="ROUGE">🔴 ROUGE — Expiré</option>
+            <option value="VERT">🟢 ROUGE → VERT (paiement hors-ligne validé)</option>
+            <option value="ORANGE">🟠 ROUGE → ORANGE (exception — permettre paiement en ligne)</option>
           </select>
         </div>
         <div class="mb-3">
-          <label class="form-label">Code sécurité</label>
+          <label class="form-label">Code sécurité <span class="text-danger">*</span></label>
           <div class="input-group">
             <input type="text" id="modal-code" class="form-control font-monospace"
                    placeholder="XXXX-XXXX-XXXX-XXXX" style="letter-spacing:1px;">
@@ -44,9 +47,8 @@
               <i class="bi bi-key me-1"></i>Générer
             </button>
           </div>
-          <div class="form-text" id="code-hint">Générez un code ou saisissez celui fourni par votre superviseur.</div>
+          <div class="form-text" id="code-hint">Générez un code usage unique avant de confirmer.</div>
         </div>
-        <!-- Encadré code généré -->
         <div id="code-genere-box" class="d-none p-3 rounded mb-3"
              style="background:#eff6ff; border:1.5px solid #bfdbfe;">
           <div class="d-flex align-items-center gap-2">
@@ -56,17 +58,24 @@
               <div class="fw-bold font-monospace fs-5" id="code-genere-value">—</div>
             </div>
           </div>
-          <div class="small text-muted mt-1">
-            <i class="bi bi-exclamation-triangle me-1 text-warning"></i>
-            Ce code est valable pour cette modification uniquement.
-          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">N° de reçu / code d'autorisation <span class="text-danger">*</span></label>
+          <input type="text" id="modal-numero-recu" class="form-control font-monospace"
+                 placeholder="Ex : RECU-2026-00123">
+          <div class="form-text">Obligatoire pour toute transition manuelle (traçabilité audit).</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Notes administrateur <span class="text-danger">*</span></label>
+          <textarea id="modal-notes-admin" class="form-control" rows="2"
+                    placeholder="Contexte de la modification, référence du dossier…"></textarea>
         </div>
         <div id="modal-alert" class="alert alert-danger d-none py-2 small"></div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
         <button class="btn btn-primary-custom" id="btn-confirm-statut" onclick="confirmerStatut()">
-          <i class="bi bi-check-lg me-1"></i>Confirmer
+          <i class="bi bi-check-lg me-1"></i>Confirmer la transition
         </button>
       </div>
     </div>
@@ -127,7 +136,10 @@ async function loadVehicle() {
 
         <!-- Actions -->
         <div class="d-grid gap-2">
-          <button class="btn btn-primary-custom" onclick="document.getElementById('modal-statut').querySelector('.modal').style;modalStatut.show()">
+          <a href="/vehicules/${auto.id}/certificat/" class="btn btn-outline-secondary">
+            <i class="bi bi-award me-2"></i>Certificat numérique
+          </a>
+          <button class="btn btn-primary-custom" id="btn-modifier-statut">
             <i class="bi bi-pencil-square me-2"></i>Modifier le statut
           </button>
         </div>
@@ -174,8 +186,7 @@ async function loadVehicle() {
       </div>
     </div>`;
 
-  // Modifier statut button fix
-  document.querySelector('[onclick*="modalStatut"]').onclick = () => modalStatut.show();
+  document.getElementById('btn-modifier-statut').onclick = () => modalStatut.show();
 
   loadHistorique();
 }
@@ -230,30 +241,36 @@ async function genererCode() {
 }
 
 async function confirmerStatut() {
-  const nouveau = document.getElementById('modal-nouveau-statut').value;
-  const code    = document.getElementById('modal-code').value.trim();
-  const alertEl = document.getElementById('modal-alert');
-  const btn     = document.getElementById('btn-confirm-statut');
+  const nouveau      = document.getElementById('modal-nouveau-statut').value;
+  const code         = document.getElementById('modal-code').value.trim();
+  const numeroRecu   = document.getElementById('modal-numero-recu').value.trim();
+  const notesAdmin   = document.getElementById('modal-notes-admin').value.trim();
+  const alertEl      = document.getElementById('modal-alert');
+  const btn          = document.getElementById('btn-confirm-statut');
 
-  if (!code) { alertEl.textContent = 'Veuillez saisir le code sécurité.'; alertEl.classList.remove('d-none'); return; }
+  alertEl.classList.add('d-none');
+  if (!code)       { alertEl.textContent = 'Veuillez générer ou saisir le code sécurité.'; alertEl.classList.remove('d-none'); return; }
+  if (!numeroRecu) { alertEl.textContent = 'Le numéro de reçu est obligatoire.';           alertEl.classList.remove('d-none'); return; }
+  if (!notesAdmin) { alertEl.textContent = 'Les notes administrateur sont obligatoires.';  alertEl.classList.remove('d-none'); return; }
 
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>En cours…';
-  alertEl.classList.add('d-none');
 
   const result = await Api.post('/statuts/modifier/', {
     immatriculation: vehicleData.immatriculation,
-    region: vehicleData.region?.nom_region,
-    code_securite: code,
-    nouveau_statut: nouveau,
+    region:          vehicleData.region?.nom_region,
+    code_securite:   code,
+    nouveau_statut:  nouveau,
+    numero_recu:     numeroRecu,
+    notes_admin:     notesAdmin,
   });
 
   btn.disabled = false;
-  btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Confirmer';
+  btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>Confirmer la transition';
 
   if (result?.ok) {
     modalStatut.hide();
-    showToast('Statut modifié avec succès !');
+    showToast(`Statut modifié : ROUGE → ${nouveau}`);
     loadVehicle();
   } else {
     alertEl.textContent = result?.data?.error || 'Erreur lors de la modification.';

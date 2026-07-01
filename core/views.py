@@ -18,7 +18,7 @@ from .models import (
     StatutVignette, StatutVignetteChoix, StatutApprobationVehicule, StatutPhysiqueVignette,
     TypeModification, CodeSecurite, HistoriqueConsultation,
     Paiement, StatutPaiement, OperateurPaiement, OTPVerification,
-    ParametrePlateforme,
+    ParametrePlateforme, DemandeTransfert, StatutTransfert,
 )
 import random
 from .serializers import (
@@ -26,7 +26,7 @@ from .serializers import (
     RegionSerializer, UtilisateurSerializer, UtilisateurCreateSerializer,
     UtilisateurUpdateSerializer, ParametrePlateformeSerializer,
     StatutVignetteSerializer, CodeSecuriteSerializer, HistoriqueConsultationSerializer,
-    PaiementSerializer,
+    PaiementSerializer, DemandeTransfertSerializer,
 )
 from .permissions import AdminOnlyPermission, RoleBasedPermission
 
@@ -767,6 +767,247 @@ def dashboard_financier(request):
             }
             for p in derniers
         ],
+    })
+
+
+# =============== AGENT DE DISTRIBUTION — ATTRIBUTION VIGNETTE PHYSIQUE ===============
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def agent_rechercher_vehicule(request):
+    """
+    Recherche d'un véhicule par immatriculation (Agent de distribution).
+    Retourne les infos nécessaires à la remise physique de vignette.
+    """
+    roles_autorises = {RoleUtilisateur.AGENT_DISTRIB, RoleUtilisateur.ADMIN_SYS, RoleUtilisateur.SUP_DGI}
+    if request.user.role not in roles_autorises:
+        return Response({'error': 'Accès non autorisé.'}, status=403)
+
+    immat = request.query_params.get('immatriculation', '').strip().upper()
+    if not immat:
+        return Response({'error': 'Paramètre immatriculation requis.'}, status=400)
+
+    auto = Automobile.objects.select_related('region', 'statut_actuel').filter(
+        immatriculation__iexact=immat
+    ).first()
+
+    if not auto:
+        return Response({'error': 'Véhicule introuvable.'}, status=404)
+
+    s = auto.statut_actuel
+    return Response({
+        'id': auto.id,
+        'immatriculation': auto.immatriculation,
+        'region': auto.region.nom_region,
+        'proprietaire': f"{auto.nom} {auto.prenom}",
+        'telephone': auto.telephone,
+        'marque': f"{auto.marque} {auto.modele or ''}".strip(),
+        'statut_approbation': auto.statut_approbation,
+        'statut_vignette': s.statut if s else 'ROUGE',
+        'statut_physique': s.statut_physique if s else 'NON_ATTRIBUE',
+        'date_fin_validite': s.date_fin_validite.isoformat() if s else None,
+        'paiement_confirme': Paiement.objects.filter(
+            automobile=auto, statut=StatutPaiement.CONFIRME
+        ).order_by('-date_confirmation').first() is not None,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def agent_attribuer_vignette(request, automobile_id):
+    """
+    Attribution de la vignette physique à un véhicule (Agent de distribution).
+    Conditions : véhicule APPROUVE + paiement CONFIRME + statut physique NON_ATTRIBUE.
+    """
+    roles_autorises = {RoleUtilisateur.AGENT_DISTRIB, RoleUtilisateur.ADMIN_SYS}
+    if request.user.role not in roles_autorises:
+        return Response({'error': 'Accès non autorisé.'}, status=403)
+
+    try:
+        auto = Automobile.objects.select_related('statut_actuel').get(id=automobile_id)
+    except Automobile.DoesNotExist:
+        return Response({'error': 'Véhicule introuvable.'}, status=404)
+
+    if auto.statut_approbation != StatutApprobationVehicule.APPROUVE:
+        return Response({'error': 'Ce véhicule n\'est pas approuvé par l\'administrateur.'}, status=403)
+
+    if not auto.statut_actuel:
+        return Response({'error': 'Aucune vignette numérique active pour ce véhicule.'}, status=400)
+
+    if auto.statut_actuel.statut_physique == StatutPhysiqueVignette.ATTRIBUE:
+        return Response({'error': 'Une vignette physique a déjà été attribuée à ce véhicule.'}, status=400)
+
+    paiement_ok = Paiement.objects.filter(
+        automobile=auto, statut=StatutPaiement.CONFIRME
+    ).exists()
+    if not paiement_ok:
+        return Response({'error': 'Aucun paiement confirmé pour ce véhicule.'}, status=403)
+
+    sv = auto.statut_actuel
+    sv.statut_physique = StatutPhysiqueVignette.ATTRIBUE
+    sv.notes_admin = (sv.notes_admin + '\n' if sv.notes_admin else '') + \
+        f'Vignette physique attribuée par {request.user.nom} {request.user.prenom} le {timezone.now().strftime("%d/%m/%Y %H:%M")}'
+    sv.save(update_fields=['statut_physique', 'notes_admin'])
+
+    HistoriqueConsultation.objects.create(
+        utilisateur=request.user,
+        automobile=auto,
+        action_performee=f'Attribution vignette physique par Agent {request.user.nom} {request.user.prenom}',
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
+
+    return Response({
+        'success': True,
+        'immatriculation': auto.immatriculation,
+        'statut_physique': StatutPhysiqueVignette.ATTRIBUE,
+        'attribue_par': f"{request.user.nom} {request.user.prenom}",
+        'date_attribution': timezone.now().isoformat(),
+    })
+
+
+# =============== TRANSFERT DE PROPRIÉTÉ ===============
+
+class DemandeTransfertViewSet(viewsets.ModelViewSet):
+    queryset = DemandeTransfert.objects.select_related('automobile', 'traite_par').order_by('-date_demande')
+    serializer_class = DemandeTransfertSerializer
+
+    def get_permissions(self):
+        if self.action == 'create':
+            return [IsAuthenticated()]
+        return [IsAuthenticated()]
+
+    def perform_create(self, request_data, auto):
+        return DemandeTransfert.objects.create(
+            automobile=auto,
+            ancien_nom=auto.nom,
+            ancien_prenom=auto.prenom,
+            ancien_telephone=auto.telephone,
+            **request_data,
+        )
+
+    def create(self, request, *args, **kwargs):
+        automobile_id = request.data.get('automobile')
+        try:
+            auto = Automobile.objects.get(id=automobile_id)
+        except Automobile.DoesNotExist:
+            return Response({'error': 'Véhicule introuvable.'}, status=404)
+
+        data = {
+            'nouveau_nom':       request.data.get('nouveau_nom', '').strip(),
+            'nouveau_prenom':    request.data.get('nouveau_prenom', '').strip(),
+            'nouveau_telephone': request.data.get('nouveau_telephone', '').strip(),
+            'motif':             request.data.get('motif', '').strip(),
+        }
+        if not all([data['nouveau_nom'], data['nouveau_prenom'], data['nouveau_telephone']]):
+            return Response({'error': 'Champs obligatoires : nouveau_nom, nouveau_prenom, nouveau_telephone'}, status=400)
+
+        demande = self.perform_create(data, auto)
+        serializer = self.get_serializer(demande)
+        return Response(serializer.data, status=201)
+
+    @action(detail=True, methods=['post'])
+    def traiter(self, request, pk=None):
+        """Approuver ou rejeter un transfert (Admin système uniquement)."""
+        if request.user.role != RoleUtilisateur.ADMIN_SYS:
+            return Response({'error': 'Seul l\'administrateur système peut traiter les transferts.'}, status=403)
+
+        demande = self.get_object()
+        if demande.statut != StatutTransfert.EN_ATTENTE:
+            return Response({'error': f'Cette demande est déjà traitée ({demande.statut}).'}, status=400)
+
+        decision   = request.data.get('decision', '').strip().upper()
+        notes_admin = request.data.get('notes', '').strip()
+
+        if decision not in [StatutTransfert.APPROUVE, StatutTransfert.REJETE]:
+            return Response({'error': 'decision doit être APPROUVE ou REJETE.'}, status=400)
+
+        demande.statut          = decision
+        demande.notes_admin     = notes_admin
+        demande.traite_par      = request.user
+        demande.date_traitement = timezone.now()
+        demande.save()
+
+        if decision == StatutTransfert.APPROUVE:
+            # Mettre à jour le propriétaire du véhicule
+            auto = demande.automobile
+            auto.nom       = demande.nouveau_nom
+            auto.prenom    = demande.nouveau_prenom
+            auto.telephone = demande.nouveau_telephone
+            auto.save(update_fields=['nom', 'prenom', 'telephone'])
+
+            HistoriqueConsultation.objects.create(
+                utilisateur=request.user,
+                automobile=auto,
+                action_performee=f'Transfert propriété approuvé : {demande.ancien_nom} → {demande.nouveau_nom} {demande.nouveau_prenom}',
+                ip_address=request.META.get('REMOTE_ADDR'),
+            )
+
+        return Response({
+            'success': True,
+            'decision': decision,
+            'automobile': demande.automobile.immatriculation,
+        })
+
+
+# =============== CERTIFICAT / REÇU PDF (HTML print-ready) ===============
+
+from django.shortcuts import get_object_or_404
+from django.template.loader import render_to_string
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def certificat_vignette(request, automobile_id):
+    """Génère les données pour le certificat numérique (QR + infos vignette)."""
+    auto = get_object_or_404(Automobile, id=automobile_id)
+
+    if not auto.statut_actuel:
+        return Response({'error': 'Aucune vignette active pour ce véhicule.'}, status=404)
+
+    # QR code
+    qr_data = auto.generer_qr_data()
+    qr = qrcode.QRCode(version=10, error_correction=qrcode.constants.ERROR_CORRECT_H, box_size=8, border=3)
+    qr.add_data(json.dumps(qr_data))
+    qr.make(fit=True)
+    img = qr.make_image(fill_color='black', back_color='white')
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    qr_b64 = base64.b64encode(buf.getvalue()).decode()
+
+    # Dernier paiement confirmé
+    dernier_paiement = Paiement.objects.filter(
+        automobile=auto, statut=StatutPaiement.CONFIRME
+    ).order_by('-date_confirmation').first()
+
+    sv = auto.statut_actuel
+    return Response({
+        'vehicule': {
+            'immatriculation': auto.immatriculation,
+            'region': auto.region.nom_region,
+            'proprietaire': f"{auto.nom} {auto.prenom}",
+            'telephone': auto.telephone,
+            'marque': f"{auto.marque} {auto.modele or ''}".strip(),
+            'type_vehicule': auto.type_vehicule,
+            'numero_chassis': auto.numero_chassis,
+            'energie': auto.energie,
+            'puissance_cv': auto.puissance_cv,
+            'annee_fabrication': auto.annee_fabrication,
+        },
+        'vignette': {
+            'statut': sv.statut,
+            'statut_physique': sv.statut_physique,
+            'date_debut': sv.date_debut_validite.isoformat(),
+            'date_fin': sv.date_fin_validite.isoformat(),
+            'code_securite': sv.code_securite,
+            'type_modification': sv.type_modification,
+        },
+        'paiement': {
+            'reference': dernier_paiement.reference if dernier_paiement else None,
+            'montant': float(dernier_paiement.montant) if dernier_paiement else float(auto.montant_taxe),
+            'operateur': dernier_paiement.operateur if dernier_paiement else None,
+            'date': dernier_paiement.date_confirmation.isoformat() if dernier_paiement and dernier_paiement.date_confirmation else None,
+        },
+        'qr_code_base64': qr_b64,
+        'genere_le': timezone.now().isoformat(),
     })
 
 

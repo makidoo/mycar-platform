@@ -5,8 +5,10 @@ from .views import (
     MyCarTokenObtainPairView, me,
     UtilisateurViewSet, RegionViewSet, AutomobileViewSet,
     StatutVignetteViewSet, CodeSecuriteViewSet, HistoriqueConsultationViewSet,
-    AdminUtilisateurViewSet, ParametrePlateformeViewSet,
+    AdminUtilisateurViewSet, ParametrePlateformeViewSet, DemandeTransfertViewSet,
     generer_code_securite, modifier_statut, approuver_vehicule,
+    agent_rechercher_vehicule, agent_attribuer_vignette,
+    certificat_vignette,
     dashboard_superviseur, dashboard_financier, health_check,
     public_demander_otp, public_verifier_otp,
     public_initier_paiement, public_confirmer_paiement,
@@ -19,8 +21,9 @@ router.register(r'automobiles', AutomobileViewSet, basename='automobile')
 router.register(r'statuts', StatutVignetteViewSet, basename='statut')
 router.register(r'codes-securite', CodeSecuriteViewSet, basename='code-securite')
 router.register(r'historique', HistoriqueConsultationViewSet, basename='historique')
-router.register(r'admin/utilisateurs', AdminUtilisateurViewSet, basename='admin-utilisateur')
+router.register(r'admin/utilisateurs', AdminUtilisateurViewSet,   basename='admin-utilisateur')
 router.register(r'admin/parametres',   ParametrePlateformeViewSet, basename='admin-parametre')
+router.register(r'transferts',         DemandeTransfertViewSet,    basename='transfert')
 
 urlpatterns = [
     path('auth/login/', MyCarTokenObtainPairView.as_view(), name='token_obtain_pair'),
@@ -28,6 +31,9 @@ urlpatterns = [
     path('auth/me/', me, name='me'),
     path('automobiles/<int:automobile_id>/generer-code/', generer_code_securite,  name='generer_code_securite'),
     path('automobiles/<int:automobile_id>/approuver/',   approuver_vehicule,      name='approuver_vehicule'),
+    path('automobiles/<int:automobile_id>/certificat/', certificat_vignette,      name='certificat_vignette'),
+    path('agent/rechercher/',                           agent_rechercher_vehicule, name='agent_rechercher'),
+    path('agent/attribuer/<int:automobile_id>/',        agent_attribuer_vignette,  name='agent_attribuer'),
     path('statuts/modifier/', modifier_statut, name='modifier_statut'),
     path('dashboard/', dashboard_superviseur, name='dashboard'),
     path('dashboard/financier/', dashboard_financier, name='dashboard_financier'),

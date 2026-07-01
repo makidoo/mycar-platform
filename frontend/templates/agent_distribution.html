@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Distribution vignettes{% endblock %}
+{% block page_title %}<i class="bi bi-box-seam me-2"></i>Distribution de vignettes physiques{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+
+  <!-- Recherche véhicule -->
+  <div class="col-lg-5">
+    <div class="card p-3">
+      <div class="section-title">Rechercher un véhicule</div>
+      <div class="mb-3">
+        <label class="form-label small">Numéro d'immatriculation</label>
+        <div class="input-group">
+          <input type="text" id="input-immat" class="form-control font-monospace text-uppercase"
+                 placeholder="Ex : AB-1234-NE" maxlength="20" autocomplete="off">
+          <button class="btn btn-primary-custom" onclick="rechercherVehicule()">
+            <i class="bi bi-search me-1"></i>Rechercher
+          </button>
+        </div>
+      </div>
+      <div id="search-alert" class="alert alert-danger d-none py-2 small"></div>
+    </div>
+  </div>
+
+  <!-- Résultat + action attribution -->
+  <div class="col-lg-7">
+    <div id="result-panel" class="d-none">
+      <div class="card p-3 mb-3">
+        <div class="section-title d-flex justify-content-between align-items-center">
+          <span>Informations du véhicule</span>
+          <span id="badge-statut-physique"></span>
+        </div>
+
+        <div class="row g-2 mb-3" id="vehicule-infos"></div>
+
+        <!-- Conditions d'attribution -->
+        <div id="conditions-panel" class="mb-3"></div>
+
+        <!-- Bouton attribution -->
+        <button id="btn-attribuer" class="btn btn-success w-100 d-none" onclick="attribuerVignette()">
+          <i class="bi bi-check-circle me-2"></i>Confirmer l'attribution de la vignette physique
+        </button>
+
+        <div id="action-alert" class="alert d-none py-2 small mt-2"></div>
+      </div>
+    </div>
+
+    <!-- État initial -->
+    <div id="empty-state" class="text-center text-muted py-5">
+      <i class="bi bi-box-seam" style="font-size:3rem;opacity:.3;"></i>
+      <div class="mt-2">Saisissez une immatriculation pour commencer</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Historique des attributions de la journée -->
+<div class="card p-3 mt-3">
+  <div class="section-title">Attributions effectuées aujourd'hui</div>
+  <div id="historique-jour">
+    <div class="text-center text-muted py-3 small">Chargement…</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let vehiculeEnCours = null;
+
+async function rechercherVehicule() {
+  const immat = document.getElementById('input-immat').value.trim().toUpperCase();
+  const alertEl = document.getElementById('search-alert');
+  alertEl.classList.add('d-none');
+
+  if (!immat) {
+    alertEl.textContent = 'Veuillez saisir un numéro d\'immatriculation.';
+    alertEl.classList.remove('d-none');
+    return;
+  }
+
+  const result = await Api.get(`/agent/rechercher/?immatriculation=${encodeURIComponent(immat)}`);
+  if (!result) {
+    alertEl.textContent = 'Véhicule introuvable.';
+    alertEl.classList.remove('d-none');
+    document.getElementById('result-panel').classList.add('d-none');
+    document.getElementById('empty-state').classList.remove('d-none');
+    return;
+  }
+
+  vehiculeEnCours = result;
+  afficherResultat(result);
+}
+
+function afficherResultat(v) {
+  document.getElementById('empty-state').classList.add('d-none');
+  document.getElementById('result-panel').classList.remove('d-none');
+  document.getElementById('action-alert').classList.add('d-none');
+
+  // Badge statut physique
+  const physBadge = v.statut_physique === 'ATTRIBUE'
+    ? '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Attribué</span>'
+    : '<span class="badge bg-warning text-dark"><i class="bi bi-hourglass me-1"></i>Non attribué</span>';
+  document.getElementById('badge-statut-physique').innerHTML = physBadge;
+
+  // Infos véhicule
+  document.getElementById('vehicule-infos').innerHTML = `
+    ${infoCol('Immatriculation', `<strong class="text-primary">${v.immatriculation}</strong>`)}
+    ${infoCol('Région', v.region)}
+    ${infoCol('Propriétaire', v.proprietaire)}
+    ${infoCol('Téléphone', v.telephone)}
+    ${infoCol('Véhicule', v.marque)}
+    ${infoCol('Statut vignette', statutBadge(v.statut_vignette))}
+    ${infoCol('Approbation', approbBadge(v.statut_approbation))}
+    ${infoCol('Paiement confirmé', v.paiement_confirme
+      ? '<span class="text-success fw-semibold"><i class="bi bi-check-circle me-1"></i>Oui</span>'
+      : '<span class="text-danger fw-semibold"><i class="bi bi-x-circle me-1"></i>Non</span>')}
+  `;
+
+  // Conditions
+  const conditions = [
+    { ok: v.statut_approbation === 'APPROUVE', label: 'Véhicule approuvé par l\'administrateur' },
+    { ok: v.paiement_confirme,                 label: 'Paiement confirmé dans le système' },
+    { ok: v.statut_physique !== 'ATTRIBUE',    label: 'Vignette physique pas encore attribuée' },
+  ];
+
+  document.getElementById('conditions-panel').innerHTML = `
+    <div class="list-group list-group-flush small">
+      ${conditions.map(c => `
+        <div class="list-group-item px-0 py-1 d-flex align-items-center gap-2">
+          <i class="bi ${c.ok ? 'bi-check-circle-fill text-success' : 'bi-x-circle-fill text-danger'}"></i>
+          ${c.label}
+        </div>`).join('')}
+    </div>`;
+
+  // Bouton attribution
+  const peutAttribuer = conditions.every(c => c.ok);
+  const btn = document.getElementById('btn-attribuer');
+  if (peutAttribuer) {
+    btn.classList.remove('d-none');
+  } else {
+    btn.classList.add('d-none');
+  }
+}
+
+async function attribuerVignette() {
+  if (!vehiculeEnCours) return;
+  const btn = document.getElementById('btn-attribuer');
+  const alertEl = document.getElementById('action-alert');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Attribution en cours…';
+
+  const result = await Api.post(`/agent/attribuer/${vehiculeEnCours.id}/`, {});
+  btn.disabled = false;
+  btn.innerHTML = '<i class="bi bi-check-circle me-2"></i>Confirmer l\'attribution de la vignette physique';
+
+  if (result?.ok) {
+    alertEl.className = 'alert alert-success py-2 small mt-2';
+    alertEl.innerHTML = `<i class="bi bi-check-circle me-2"></i>Vignette physique attribuée avec succès pour ${vehiculeEnCours.immatriculation}.`;
+    alertEl.classList.remove('d-none');
+    btn.classList.add('d-none');
+    vehiculeEnCours.statut_physique = 'ATTRIBUE';
+    document.getElementById('badge-statut-physique').innerHTML =
+      '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Attribué</span>';
+    chargerHistoriqueJour();
+  } else {
+    alertEl.className = 'alert alert-danger py-2 small mt-2';
+    alertEl.textContent = result?.data?.error || 'Erreur lors de l\'attribution.';
+    alertEl.classList.remove('d-none');
+  }
+}
+
+function infoCol(label, value) {
+  return `<div class="col-6">
+    <div class="text-muted" style="font-size:.75rem;">${label}</div>
+    <div class="small">${value ?? '—'}</div>
+  </div>`;
+}
+
+function approbBadge(s) {
+  const map = {
+    APPROUVE:   'badge bg-success',
+    EN_ATTENTE: 'badge bg-warning text-dark',
+    REJETE:     'badge bg-danger',
+    SUSPENDU:   'badge bg-secondary',
+  };
+  return `<span class="${map[s] || 'badge bg-secondary'}">${s}</span>`;
+}
+
+async function chargerHistoriqueJour() {
+  // Affiche les dernières actions de l'utilisateur connecté
+  const el = document.getElementById('historique-jour');
+  const today = new Date().toISOString().split('T')[0];
+  const data = await Api.get(`/historique/?ordering=-date_consultation`);
+  if (!data?.results?.length && !Array.isArray(data)) {
+    el.innerHTML = '<div class="text-muted small text-center">Aucune attribution aujourd\'hui.</div>';
+    return;
+  }
+  const items = Array.isArray(data) ? data : data.results || [];
+  const distributions = items.filter(h => h.action_performee?.includes('Attribution vignette physique'));
+  if (!distributions.length) {
+    el.innerHTML = '<div class="text-muted small text-center">Aucune attribution enregistrée pour le moment.</div>';
+    return;
+  }
+  el.innerHTML = `<table class="table table-sm small">
+    <thead><tr><th>Immatriculation</th><th>Date/Heure</th><th>Action</th></tr></thead>
+    <tbody>
+      ${distributions.map(h => `
+        <tr>
+          <td><strong>${h.automobile_immatriculation}</strong></td>
+          <td>${new Date(h.date_consultation).toLocaleString('fr-FR')}</td>
+          <td class="text-success"><i class="bi bi-check-circle me-1"></i>Attribuée</td>
+        </tr>`).join('')}
+    </tbody>
+  </table>`;
+}
+
+// Listener touche Entrée
+document.getElementById('input-immat').addEventListener('keypress', e => {
+  if (e.key === 'Enter') rechercherVehicule();
+});
+
+chargerHistoriqueJour();
+</script>
+{% endblock %}
