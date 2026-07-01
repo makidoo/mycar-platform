@@ -1,0 +1,427 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Rapports annuels{% endblock %}
+{% block page_title %}<i class="bi bi-file-earmark-bar-graph me-2"></i>Rapports annuels{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+@media print {
+  .sidebar, .topbar, .bandeau-officiel, .sidebar-backdrop,
+  .no-print { display: none !important; }
+  .main-content { margin: 0 !important; padding: 0 !important; }
+  .content-area { padding: 0 !important; }
+  .print-header { display: block !important; }
+  body { background: white !important; }
+  .card { border: 1px solid #ccc !important; box-shadow: none !important; break-inside: avoid; }
+  canvas { max-width: 100% !important; }
+}
+.print-header { display: none; text-align: center; margin-bottom: 1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- En-tête impression (invisible à l'écran) -->
+<div class="print-header">
+  <strong style="font-size:1.1rem;">RÉPUBLIQUE DU NIGER — MINISTÈRE DES FINANCES</strong><br>
+  Direction Générale des Impôts — Système MY CAR<br>
+  <span id="print-title"></span>
+</div>
+
+<!-- Filtres -->
+<div class="filter-bar mb-4 no-print">
+  <div class="row g-2 align-items-end">
+    <div class="col-6 col-md-3">
+      <label class="form-label small">Année</label>
+      <select id="f-annee" class="form-select"></select>
+    </div>
+    <div class="col-6 col-md-3" id="col-region">
+      <label class="form-label small">Région</label>
+      <select id="f-region" class="form-select">
+        <option value="">Toutes les régions</option>
+      </select>
+    </div>
+    <div class="col-6 col-md-3">
+      <label class="form-label small">Type de rapport</label>
+      <select id="f-type" class="form-select">
+        <option value="annuel">Rapport annuel</option>
+        <option value="vehicules">Par type de véhicule</option>
+        <option value="region">Par région</option>
+        <option value="operateur">Par opérateur Mobile Money</option>
+      </select>
+    </div>
+    <div class="col-12 col-md-3 d-flex gap-2">
+      <button class="btn btn-primary-custom btn-sm flex-fill" onclick="genererRapport()">
+        <i class="bi bi-search me-1"></i>Générer
+      </button>
+      <button class="btn btn-outline-success btn-sm" onclick="exportExcel()" title="Export Excel">
+        <i class="bi bi-file-earmark-excel"></i>
+      </button>
+      <button class="btn btn-outline-secondary btn-sm" onclick="window.print()" title="Imprimer / PDF">
+        <i class="bi bi-printer"></i>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Zone rapport -->
+<div id="rapport-zone">
+  <div class="text-center text-muted py-5">
+    <i class="bi bi-file-earmark-bar-graph" style="font-size:3rem; opacity:.3;"></i>
+    <div class="mt-2">Sélectionnez un rapport et cliquez sur Générer</div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Init filtres ─────────────────────────────────────────────
+const anneeSelect = document.getElementById('f-annee');
+const anneeActuelle = new Date().getFullYear();
+for (let y = anneeActuelle; y >= 2020; y--) {
+  anneeSelect.innerHTML += `<option value="${y}" ${y === anneeActuelle ? 'selected' : ''}>${y}</option>`;
+}
+
+async function loadRegions() {
+  const data = await Api.get('/regions/');
+  if (!data?.results) return;
+  const sel = document.getElementById('f-region');
+  data.results.forEach(r => {
+    sel.innerHTML += `<option value="${r.id}">${r.nom_region}</option>`;
+  });
+}
+
+// Masquer filtre région pour AGENT_DGI
+const _u = Api.getUser();
+if (_u?.role === 'AGENT_DGI') {
+  document.getElementById('col-region').style.display = 'none';
+} else {
+  loadRegions();
+}
+
+// ── Générateur de rapport ────────────────────────────────────
+async function genererRapport() {
+  const annee   = document.getElementById('f-annee').value;
+  const regionId = document.getElementById('f-region').value;
+  const type    = document.getElementById('f-type').value;
+
+  const zone = document.getElementById('rapport-zone');
+  zone.innerHTML = '<div class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Chargement…</div>';
+
+  const params = new URLSearchParams({ annee });
+  if (regionId) params.set('region_id', regionId);
+
+  const [dash, fin] = await Promise.all([
+    Api.get(`/dashboard/?${params}`),
+    Api.get(`/dashboard/financier/?date_debut=${annee}-01-01&date_fin=${annee}-12-31${regionId ? '&region_id=' + regionId : ''}`),
+  ]);
+
+  if (!dash || !fin) {
+    zone.innerHTML = '<div class="alert alert-danger">Erreur lors du chargement des données.</div>';
+    return;
+  }
+
+  document.getElementById('print-title').textContent = `Rapport ${type} — Exercice ${annee}`;
+
+  switch (type) {
+    case 'annuel':    afficherRapportAnnuel(dash, fin, annee); break;
+    case 'vehicules': afficherRapportVehicules(dash, fin, annee); break;
+    case 'region':    afficherRapportRegion(fin, annee); break;
+    case 'operateur': afficherRapportOperateur(fin, annee); break;
+  }
+}
+
+function exportExcel() {
+  const annee    = document.getElementById('f-annee').value;
+  const regionId = document.getElementById('f-region').value;
+  const params   = new URLSearchParams({ type: 'paiements', annee });
+  if (regionId) params.set('region_id', regionId);
+  window.open(`/api/v1/export/excel/?${params}`, '_blank');
+}
+
+// ── Rapport annuel ───────────────────────────────────────────
+function afficherRapportAnnuel(dash, fin, annee) {
+  const total    = dash.total || 0;
+  const recettes = fin.totaux?.recettes || 0;
+  const tauxRec  = dash.taux_recouvrement ?? '—';
+
+  document.getElementById('rapport-zone').innerHTML = `
+    <div class="section-title">Rapport annuel — Exercice ${annee}</div>
+    <p class="text-muted small">Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'})}</p>
+
+    <!-- Résumé exécutif -->
+    <div class="card p-4 mb-4" style="border-left:4px solid #1B3A6B;">
+      <h6 class="fw-bold mb-3">Résumé exécutif</h6>
+      <div class="row g-3 text-center">
+        <div class="col-6 col-md-3">
+          <div class="text-muted small">Total véhicules</div>
+          <div class="fw-bold fs-3 text-primary">${total}</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="text-muted small">Vignettes valides</div>
+          <div class="fw-bold fs-3 text-success">${dash.total_verts || 0}</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="text-muted small">Recettes totales</div>
+          <div class="fw-bold fs-3 text-primary">${Number(recettes).toLocaleString('fr-FR')}</div>
+          <div class="text-muted" style="font-size:.72rem;">FCFA</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="text-muted small">Taux recouvrement</div>
+          <div class="fw-bold fs-3" style="color:${tauxRec >= 80 ? '#27AE60' : tauxRec >= 50 ? '#E67E22' : '#C0392B'}">${tauxRec}%</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Statuts détaillés -->
+    <div class="row g-3 mb-4">
+      <div class="col-md-6">
+        <div class="card p-3 h-100">
+          <h6 class="fw-bold mb-3">Statuts des vignettes</h6>
+          <table class="table table-sm mb-0">
+            <tbody>
+              <tr><td><span class="badge badge-vert">VERT</span></td><td class="text-end fw-semibold">${dash.total_verts || 0}</td><td class="text-end text-muted">${pct(dash.total_verts, total)}%</td></tr>
+              <tr><td><span class="badge badge-orange">ORANGE</span></td><td class="text-end fw-semibold">${dash.total_oranges || 0}</td><td class="text-end text-muted">${pct(dash.total_oranges, total)}%</td></tr>
+              <tr><td><span class="badge badge-rouge">ROUGE</span></td><td class="text-end fw-semibold">${dash.total_rouges || 0}</td><td class="text-end text-muted">${pct(dash.total_rouges, total)}%</td></tr>
+              <tr class="table-light fw-bold"><td>Total</td><td class="text-end">${total}</td><td class="text-end">100%</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card p-3 h-100">
+          <h6 class="fw-bold mb-3">Suivi opérationnel</h6>
+          <table class="table table-sm mb-0">
+            <tbody>
+              <tr><td>Vignettes physiques attribuées</td><td class="text-end fw-semibold">${dash.physique_attribue || 0}</td></tr>
+              <tr><td>En attente de distribution</td><td class="text-end text-warning fw-semibold">${dash.physique_non_attribue || 0}</td></tr>
+              <tr><td>Plaintes ouvertes / en cours</td><td class="text-end text-danger fw-semibold">${dash.plaintes_ouvertes || 0}</td></tr>
+              <tr><td>Transferts en attente</td><td class="text-end text-info fw-semibold">${dash.transferts_attente || 0}</td></tr>
+              <tr><td>Véhicules en attente d'approbation</td><td class="text-end text-warning fw-semibold">${dash.en_attente_approbation || 0}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Évolution mensuelle -->
+    <div class="card p-3 mb-4">
+      <h6 class="fw-bold mb-3">Évolution des recettes mensuelles</h6>
+      <canvas id="chart-annuel" height="80"></canvas>
+      ${!fin.par_mois?.length ? '<div class="text-center text-muted small py-3">Aucune donnée de paiement pour cette période.</div>' : ''}
+    </div>
+
+    <!-- Top régions -->
+    ${fin.par_region?.length ? `
+    <div class="card p-3 mb-4">
+      <h6 class="fw-bold mb-3">Recettes par région</h6>
+      <table class="table table-sm table-hover mb-0">
+        <thead><tr><th>Région</th><th class="text-end">Paiements</th><th class="text-end">Recettes (FCFA)</th><th class="text-end">%</th></tr></thead>
+        <tbody>
+          ${fin.par_region.map(r => `
+            <tr>
+              <td>${r.region}</td>
+              <td class="text-end">${r.paiements || 0}</td>
+              <td class="text-end fw-semibold">${Number(r.recettes).toLocaleString('fr-FR')}</td>
+              <td class="text-end text-muted">${recettes > 0 ? Math.round(r.recettes / recettes * 100) : 0}%</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : ''}
+  `;
+
+  // Chart mensuel
+  if (fin.par_mois?.length) {
+    new Chart(document.getElementById('chart-annuel'), {
+      type: 'bar',
+      data: {
+        labels: fin.par_mois.map(e => e.mois),
+        datasets: [{ label: 'Recettes (FCFA)', data: fin.par_mois.map(e => e.recettes),
+          backgroundColor: '#1B3A6B', borderRadius: 6 }],
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: { y: { ticks: { callback: v => v.toLocaleString('fr-FR') } } },
+      },
+    });
+  }
+}
+
+// ── Rapport par type de véhicule ─────────────────────────────
+function afficherRapportVehicules(dash, fin, annee) {
+  document.getElementById('rapport-zone').innerHTML = `
+    <div class="section-title">Répartition par type de véhicule — ${annee}</div>
+    <p class="text-muted small">Généré le ${new Date().toLocaleDateString('fr-FR')}</p>
+
+    <div class="card p-3 mb-4">
+      <h6 class="fw-bold mb-3">Vue d'ensemble par type</h6>
+      <div class="row g-3 text-center mb-3">
+        ${[
+          { label: 'Véhicules', icon: 'car-front', color: '#2563EB' },
+          { label: 'Motos',     icon: 'bicycle',   color: '#E67E22' },
+          { label: 'Bus',       icon: 'bus-front',  color: '#27AE60' },
+          { label: 'Camions',   icon: 'truck',      color: '#8B5CF6' },
+        ].map(t => `
+          <div class="col-6 col-md-3">
+            <div class="card p-3 h-100">
+              <i class="bi bi-${t.icon} fs-3 mb-2" style="color:${t.color}"></i>
+              <div class="fw-bold">—</div>
+              <div class="text-muted small">${t.label}</div>
+            </div>
+          </div>`).join('')}
+      </div>
+      <p class="text-muted small fst-italic">Note : la répartition détaillée par type est disponible via l'export Excel (filtre type véhicule).</p>
+    </div>
+
+    <div class="row g-3 mb-4">
+      <div class="col-md-6">
+        <div class="card p-3 h-100">
+          <h6 class="fw-bold mb-3">Statuts (tous types confondus)</h6>
+          <canvas id="chart-type-donut" height="200"></canvas>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card p-3 h-100">
+          <h6 class="fw-bold mb-3">Indicateurs clés</h6>
+          <table class="table table-sm">
+            <tbody>
+              <tr><td>Total parc automobile</td><td class="text-end fw-bold">${dash.total || 0}</td></tr>
+              <tr><td>Taux de recouvrement</td><td class="text-end fw-bold text-success">${dash.taux_recouvrement ?? '—'}%</td></tr>
+              <tr><td>Recettes totales (FCFA)</td><td class="text-end fw-bold">${Number(fin.totaux?.recettes || 0).toLocaleString('fr-FR')}</td></tr>
+              <tr><td>Nombre de paiements</td><td class="text-end fw-bold">${fin.totaux?.paiements || 0}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+
+  new Chart(document.getElementById('chart-type-donut'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Valides (VERT)', 'Imminents (ORANGE)', 'Expirés (ROUGE)'],
+      datasets: [{ data: [dash.total_verts || 0, dash.total_oranges || 0, dash.total_rouges || 0],
+        backgroundColor: ['#27AE60','#E67E22','#C0392B'], borderWidth: 0 }],
+    },
+    options: { cutout: '60%', plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } } },
+  });
+}
+
+// ── Rapport par région ───────────────────────────────────────
+function afficherRapportRegion(fin, annee) {
+  const regions = fin.par_region || [];
+  const total   = regions.reduce((s, r) => s + (r.recettes || 0), 0);
+
+  document.getElementById('rapport-zone').innerHTML = `
+    <div class="section-title">Rapport par région — ${annee}</div>
+    <p class="text-muted small">Généré le ${new Date().toLocaleDateString('fr-FR')}</p>
+
+    <div class="card p-3 mb-4">
+      <h6 class="fw-bold mb-3">Recettes par région (FCFA)</h6>
+      <canvas id="chart-region" height="100"></canvas>
+    </div>
+
+    <div class="card p-3 mb-4">
+      <h6 class="fw-bold mb-3">Tableau détaillé</h6>
+      <table class="table table-hover table-sm mb-0">
+        <thead><tr><th>#</th><th>Région</th><th class="text-end">Paiements</th><th class="text-end">Recettes (FCFA)</th><th class="text-end">Part</th></tr></thead>
+        <tbody>
+          ${regions.length
+            ? regions.map((r, i) => `
+              <tr>
+                <td class="text-muted">${i + 1}</td>
+                <td><strong>${r.region}</strong></td>
+                <td class="text-end">${r.paiements || 0}</td>
+                <td class="text-end fw-semibold">${Number(r.recettes).toLocaleString('fr-FR')}</td>
+                <td class="text-end text-muted">${total > 0 ? Math.round(r.recettes / total * 100) : 0}%</td>
+              </tr>`).join('')
+            : '<tr><td colspan="5" class="text-center text-muted py-3">Aucune donnée disponible.</td></tr>'}
+        </tbody>
+        ${regions.length ? `<tfoot class="table-light fw-bold">
+          <tr><td colspan="2">Total</td><td class="text-end">${regions.reduce((s,r)=>s+(r.paiements||0),0)}</td><td class="text-end">${Number(total).toLocaleString('fr-FR')}</td><td class="text-end">100%</td></tr>
+        </tfoot>` : ''}
+      </table>
+    </div>
+  `;
+
+  if (regions.length) {
+    new Chart(document.getElementById('chart-region'), {
+      type: 'bar',
+      data: {
+        labels: regions.map(r => r.region),
+        datasets: [{ label: 'Recettes (FCFA)', data: regions.map(r => r.recettes),
+          backgroundColor: ['#1B3A6B','#2563EB','#27AE60','#E67E22','#C0392B','#8B5CF6','#06B6D4','#EC4899'],
+          borderRadius: 6 }],
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: { y: { ticks: { callback: v => v.toLocaleString('fr-FR') } } },
+      },
+    });
+  }
+}
+
+// ── Rapport par opérateur ─────────────────────────────────────
+function afficherRapportOperateur(fin, annee) {
+  const ops = fin.par_operateur || [];
+  const opLabels = { NITA: 'NITA', AMANATA: 'Amanata', ORANGE_MONEY: 'ZamaniCash', AIRTEL_MONEY: 'Airtel Money' };
+  const total = ops.reduce((s, o) => s + (o.recettes || 0), 0);
+
+  document.getElementById('rapport-zone').innerHTML = `
+    <div class="section-title">Rapport par opérateur Mobile Money — ${annee}</div>
+    <p class="text-muted small">Généré le ${new Date().toLocaleDateString('fr-FR')}</p>
+
+    <div class="row g-3 mb-4">
+      <div class="col-md-5">
+        <div class="card p-3 h-100">
+          <h6 class="fw-bold mb-3">Répartition des recettes</h6>
+          <canvas id="chart-op-donut" height="220"></canvas>
+        </div>
+      </div>
+      <div class="col-md-7">
+        <div class="card p-3 h-100">
+          <h6 class="fw-bold mb-3">Détail par opérateur</h6>
+          <table class="table table-sm mb-0">
+            <thead><tr><th>Opérateur</th><th class="text-end">Paiements</th><th class="text-end">Recettes (FCFA)</th><th class="text-end">Part</th></tr></thead>
+            <tbody>
+              ${ops.length
+                ? ops.map(o => `
+                  <tr>
+                    <td><strong>${opLabels[o.operateur] || o.operateur}</strong></td>
+                    <td class="text-end">${o.paiements || 0}</td>
+                    <td class="text-end fw-semibold">${Number(o.recettes).toLocaleString('fr-FR')}</td>
+                    <td class="text-end text-muted">${total > 0 ? Math.round(o.recettes / total * 100) : 0}%</td>
+                  </tr>`).join('')
+                : '<tr><td colspan="4" class="text-center text-muted py-3">Aucune donnée.</td></tr>'}
+            </tbody>
+            ${ops.length ? `<tfoot class="table-light fw-bold">
+              <tr><td>Total</td><td class="text-end">${ops.reduce((s,o)=>s+(o.paiements||0),0)}</td><td class="text-end">${Number(total).toLocaleString('fr-FR')}</td><td class="text-end">100%</td></tr>
+            </tfoot>` : ''}
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+
+  if (ops.length) {
+    new Chart(document.getElementById('chart-op-donut'), {
+      type: 'doughnut',
+      data: {
+        labels: ops.map(o => opLabels[o.operateur] || o.operateur),
+        datasets: [{ data: ops.map(o => o.recettes),
+          backgroundColor: ['#1B3A6B','#2563EB','#27AE60','#E67E22','#8B5CF6','#06B6D4'],
+          borderWidth: 0 }],
+      },
+      options: { cutout: '55%', plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } } },
+    });
+  }
+}
+
+// ── Utilitaire ──────────────────────────────────────────────
+function pct(val, total) {
+  return total ? Math.round((val || 0) / total * 100) : 0;
+}
+</script>
+{% endblock %}

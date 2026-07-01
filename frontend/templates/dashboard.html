@@ -77,6 +77,53 @@
   </div>
 </div>
 
+<!-- ── KPIs opérationnels ─────────────────────────────────── -->
+<div class="section-title mt-2">Indicateurs opérationnels</div>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="card p-3 text-center h-100">
+      <div class="text-muted small mb-1">Taux recouvrement</div>
+      <div class="fw-bold fs-4" id="kpi-taux" style="color:#27AE60;">—</div>
+      <div class="text-muted" style="font-size:.72rem;">% payés / approuvés</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="card p-3 text-center h-100 border-warning">
+      <div class="text-muted small mb-1">En attente approbation</div>
+      <div class="fw-bold fs-4 text-warning" id="kpi-attente">—</div>
+      <div class="text-muted" style="font-size:.72rem;">véhicules</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="card p-3 text-center h-100">
+      <div class="text-muted small mb-1">Vignettes attribuées</div>
+      <div class="fw-bold fs-4 text-success" id="kpi-phys-attrib">—</div>
+      <div class="text-muted" style="font-size:.72rem;">physiques</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="card p-3 text-center h-100 border-secondary">
+      <div class="text-muted small mb-1">Non attribuées</div>
+      <div class="fw-bold fs-4 text-secondary" id="kpi-phys-non">—</div>
+      <div class="text-muted" style="font-size:.72rem;">en attente distribution</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="card p-3 text-center h-100 border-danger">
+      <div class="text-muted small mb-1">Plaintes ouvertes</div>
+      <div class="fw-bold fs-4 text-danger" id="kpi-plaintes">—</div>
+      <div class="text-muted" style="font-size:.72rem;">à traiter</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="card p-3 text-center h-100 border-info">
+      <div class="text-muted small mb-1">Transferts en attente</div>
+      <div class="fw-bold fs-4 text-info" id="kpi-transferts">—</div>
+      <div class="text-muted" style="font-size:.72rem;">à valider</div>
+    </div>
+  </div>
+</div>
+
 <!-- ── Section financière ───────────────────────────────────── -->
 <div class="d-flex align-items-center justify-content-between mb-3 mt-2">
   <div class="d-flex align-items-center gap-2">
@@ -234,6 +281,14 @@ async function loadStatuts() {
     },
     options: { cutout: '68%', plugins: { legend: { display: false } } },
   });
+
+  // KPIs opérationnels
+  document.getElementById('kpi-taux').textContent      = (stats.taux_recouvrement ?? '—') + (stats.taux_recouvrement != null ? '%' : '');
+  document.getElementById('kpi-attente').textContent   = stats.en_attente_approbation ?? '—';
+  document.getElementById('kpi-phys-attrib').textContent = stats.physique_attribue ?? '—';
+  document.getElementById('kpi-phys-non').textContent  = stats.physique_non_attribue ?? '—';
+  document.getElementById('kpi-plaintes').textContent  = stats.plaintes_ouvertes ?? '—';
+  document.getElementById('kpi-transferts').textContent = stats.transferts_attente ?? '—';
 
   if (autos?.results) {
     const tbody = document.getElementById('recent-tbody');

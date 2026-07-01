@@ -350,8 +350,34 @@ def dashboard_superviseur(request):
         total_oranges=Count('id', filter=Q(statut_actuel__statut='ORANGE')),
         total_rouges=Count('id', filter=Q(statut_actuel__statut='ROUGE')),
         total=Count('id'),
+        # Approbation
+        en_attente_approbation=Count('id', filter=Q(statut_approbation='EN_ATTENTE')),
+        approuves=Count('id', filter=Q(statut_approbation='APPROUVE')),
+        # Vignettes physiques (sur les véhicules ayant un statut actuel)
+        physique_attribue=Count('id', filter=Q(statut_actuel__statut_physique='ATTRIBUE')),
+        physique_non_attribue=Count('id', filter=Q(
+            statut_actuel__statut_physique='NON_ATTRIBUE',
+            statut_approbation='APPROUVE',
+        )),
     )
-    return Response(stats)
+
+    # Taux de recouvrement : véhicules VERT / total approuvés
+    taux = 0
+    if stats['approuves']:
+        taux = round(stats['total_verts'] / stats['approuves'] * 100, 1)
+
+    # Plaintes ouvertes
+    plaintes_ouvertes = Plainte.objects.filter(statut__in=['OUVERTE', 'EN_COURS']).count()
+
+    # Transferts en attente
+    transferts_attente = DemandeTransfert.objects.filter(statut='EN_ATTENTE').count()
+
+    return Response({
+        **stats,
+        'taux_recouvrement': taux,
+        'plaintes_ouvertes': plaintes_ouvertes,
+        'transferts_attente': transferts_attente,
+    })
 
 
 # =============== ADMIN — UTILISATEURS ===============
