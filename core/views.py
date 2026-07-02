@@ -736,6 +736,7 @@ def public_confirmer_paiement(request, reference):
     # Simulation : création de la nouvelle vignette VERT
     auto = paiement.automobile
     date_fin = timezone.now().date() + timedelta(days=365 * paiement.duree_annees)
+    physique_precedent = auto.statut_actuel.statut_physique if auto.statut_actuel else StatutPhysiqueVignette.NON_ATTRIBUE
     sv = StatutVignette.objects.create(
         automobile=auto,
         statut=StatutVignetteChoix.VERT,
@@ -744,6 +745,7 @@ def public_confirmer_paiement(request, reference):
         type_modification='AUTOMATIQUE',
         operateur=None,
         mobile_payment_ref=paiement.reference,
+        statut_physique=physique_precedent,
     )
     auto.statut_actuel = sv
     auto.save(update_fields=['statut_actuel'])
@@ -1021,7 +1023,8 @@ def agent_paiement_agence(request, automobile_id):
         date_confirmation=timezone.now(),
     )
 
-    # Créer la vignette VERT
+    # Créer la vignette VERT (préserver l'attribution physique si déjà faite)
+    physique_precedent = auto.statut_actuel.statut_physique if auto.statut_actuel else StatutPhysiqueVignette.NON_ATTRIBUE
     sv = StatutVignette.objects.create(
         automobile=auto,
         statut=StatutVignetteChoix.VERT,
@@ -1031,6 +1034,7 @@ def agent_paiement_agence(request, automobile_id):
         operateur=request.user,
         notes_admin=f'Paiement en agence par {request.user.nom} {request.user.prenom}',
         mobile_payment_ref=paiement.reference,
+        statut_physique=physique_precedent,
     )
     auto.statut_actuel = sv
     auto.save(update_fields=['statut_actuel'])
