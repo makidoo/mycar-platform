@@ -6,7 +6,7 @@ from .views import (
     UtilisateurViewSet, RegionViewSet, AutomobileViewSet,
     StatutVignetteViewSet, CodeSecuriteViewSet, HistoriqueConsultationViewSet,
     AdminUtilisateurViewSet, ParametrePlateformeViewSet,
-    DemandeTransfertViewSet, PlainteViewSet,
+    DemandeTransfertViewSet, PlainteViewSet, JournalAuditViewSet,
     generer_code_securite, modifier_statut, approuver_vehicule,
     agent_rechercher_vehicule, agent_attribuer_vignette,
     certificat_vignette, export_excel,
@@ -27,6 +27,7 @@ router.register(r'admin/utilisateurs', AdminUtilisateurViewSet,   basename='admi
 router.register(r'admin/parametres',   ParametrePlateformeViewSet, basename='admin-parametre')
 router.register(r'transferts',         DemandeTransfertViewSet,    basename='transfert')
 router.register(r'plaintes',           PlainteViewSet,             basename='plainte')
+router.register(r'journal-audit',      JournalAuditViewSet,        basename='journal-audit')
 
 urlpatterns = [
     path('auth/login/', MyCarTokenObtainPairView.as_view(), name='token_obtain_pair'),

@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Journal d'audit{% endblock %}
+{% block page_title %}<i class="bi bi-shield-lock me-2"></i>Journal d'audit{% endblock %}
+
+{% block content %}
+<!-- Filtres -->
+<div class="card p-3 mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-3">
+      <label class="form-label small fw-semibold">Catégorie</label>
+      <select id="f-categorie" class="form-select form-select-sm">
+        <option value="">Toutes</option>
+        <option value="CONNEXION">Connexion</option>
+        <option value="VEHICULE">Véhicule</option>
+        <option value="PAIEMENT">Paiement</option>
+        <option value="UTILISATEUR">Utilisateur</option>
+        <option value="DISTRIBUTION">Distribution</option>
+        <option value="TRANSFERT">Transfert</option>
+        <option value="PARAMETRES">Paramètres</option>
+        <option value="POLICE">Police</option>
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small fw-semibold">Utilisateur (email)</label>
+      <input type="text" id="f-email" class="form-control form-control-sm" placeholder="ex: agent@mycar.ne">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small fw-semibold">Du</label>
+      <input type="date" id="f-debut" class="form-control form-control-sm">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small fw-semibold">Au</label>
+      <input type="date" id="f-fin" class="form-control form-control-sm">
+    </div>
+    <div class="col-md-2 d-flex gap-2">
+      <button class="btn btn-primary-custom btn-sm w-100" onclick="chargerJournal()">
+        <i class="bi bi-search me-1"></i>Filtrer
+      </button>
+      <button class="btn btn-outline-secondary btn-sm" onclick="reinitFiltres()" title="Réinitialiser">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Compteur -->
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <div id="count-label" class="text-muted small"></div>
+</div>
+
+<!-- Tableau -->
+<div class="table-card">
+  <div class="table-responsive">
+    <table class="table table-hover table-sm mb-0">
+      <thead>
+        <tr>
+          <th style="width:140px">Date / Heure</th>
+          <th>Utilisateur</th>
+          <th>Rôle</th>
+          <th>Catégorie</th>
+          <th>Action</th>
+          <th>Objet</th>
+          <th>Détail</th>
+          <th>IP</th>
+        </tr>
+      </thead>
+      <tbody id="journal-tbody">
+        <tr><td colspan="8" class="text-center text-muted py-4">Chargement…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Pagination -->
+<div class="d-flex justify-content-between align-items-center mt-3">
+  <button id="btn-prev" class="btn btn-sm btn-outline-secondary" onclick="changerPage(-1)" disabled>
+    <i class="bi bi-chevron-left"></i> Précédent
+  </button>
+  <span id="page-label" class="text-muted small"></span>
+  <button id="btn-next" class="btn btn-sm btn-outline-secondary" onclick="changerPage(1)" disabled>
+    Suivant <i class="bi bi-chevron-right"></i>
+  </button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const CATEGORIE_BADGES = {
+  CONNEXION:    'badge bg-primary',
+  VEHICULE:     'badge bg-success',
+  PAIEMENT:     'badge bg-info text-dark',
+  UTILISATEUR:  'badge bg-warning text-dark',
+  DISTRIBUTION: 'badge' ,
+  TRANSFERT:    'badge bg-secondary',
+  PARAMETRES:   'badge bg-dark',
+  POLICE:       'badge bg-danger',
+};
+
+const CATEGORIE_STYLES = {
+  DISTRIBUTION: 'background:#7c3aed',
+};
+
+const PAGE_SIZE = 50;
+let currentPage = 1;
+let totalCount  = 0;
+
+async function chargerJournal() {
+  currentPage = 1;
+  await chargerPage();
+}
+
+async function chargerPage() {
+  const tbody   = document.getElementById('journal-tbody');
+  tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">Chargement…</td></tr>';
+
+  const params = new URLSearchParams({
+    page_size: PAGE_SIZE,
+    page:      currentPage,
+    ordering:  '-date_action',
+  });
+  const cat   = document.getElementById('f-categorie').value;
+  const email = document.getElementById('f-email').value.trim();
+  const debut = document.getElementById('f-debut').value;
+  const fin   = document.getElementById('f-fin').value;
+  if (cat)   params.set('categorie', cat);
+  if (email) params.set('utilisateur_email', email);
+  if (debut) params.set('date_debut', debut);
+  if (fin)   params.set('date_fin', fin);
+
+  const data = await Api.get(`/journal-audit/?${params}`);
+  if (!data) {
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-3">Erreur de chargement.</td></tr>';
+    return;
+  }
+
+  const items = data.results || [];
+  totalCount  = data.count || 0;
+
+  document.getElementById('count-label').textContent =
+    `${totalCount} entrée${totalCount !== 1 ? 's' : ''}`;
+  document.getElementById('page-label').textContent =
+    `Page ${currentPage} / ${Math.ceil(totalCount / PAGE_SIZE) || 1}`;
+  document.getElementById('btn-prev').disabled = !data.previous;
+  document.getElementById('btn-next').disabled = !data.next;
+
+  if (!items.length) {
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><i class="bi bi-shield-lock"></i>Aucune entrée</div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = items.map(e => {
+    const badgeClass = CATEGORIE_BADGES[e.categorie] || 'badge bg-secondary';
+    const badgeStyle = CATEGORIE_STYLES[e.categorie] ? ` style="${CATEGORIE_STYLES[e.categorie]}"` : '';
+    const dt = new Date(e.date_action).toLocaleString('fr-FR');
+    const objet = e.objet_label
+      ? `<span class="text-muted small">${e.objet_type}</span><br><strong>${e.objet_label}</strong>`
+      : '—';
+    return `<tr>
+      <td class="text-muted small font-monospace" style="white-space:nowrap">${dt}</td>
+      <td class="small">${e.utilisateur_email || '—'}</td>
+      <td><span class="badge bg-light text-dark border small">${e.utilisateur_role || '—'}</span></td>
+      <td><span class="${badgeClass}"${badgeStyle}>${e.categorie}</span></td>
+      <td class="small fw-semibold">${e.action}</td>
+      <td class="small">${objet}</td>
+      <td class="text-muted small" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${e.detail}">${e.detail || '—'}</td>
+      <td class="text-muted small font-monospace">${e.ip_address || '—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function changerPage(delta) {
+  currentPage += delta;
+  await chargerPage();
+}
+
+function reinitFiltres() {
+  document.getElementById('f-categorie').value = '';
+  document.getElementById('f-email').value     = '';
+  document.getElementById('f-debut').value     = '';
+  document.getElementById('f-fin').value       = '';
+  chargerJournal();
+}
+
+// Filtrer sur Entrée dans le champ email
+document.getElementById('f-email').addEventListener('keypress', e => {
+  if (e.key === 'Enter') chargerJournal();
+});
+
+chargerJournal();
+</script>
+{% endblock %}

@@ -19,7 +19,7 @@ from .models import (
     TypeModification, CodeSecurite, HistoriqueConsultation,
     Paiement, StatutPaiement, OperateurPaiement, OTPVerification,
     ParametrePlateforme, DemandeTransfert, StatutTransfert,
-    Plainte, StatutPlainte, NotificationLog,
+    Plainte, StatutPlainte, NotificationLog, JournalAudit, CategorieAudit,
 )
 from .sms_service import sms_confirmation_paiement, sms_otp, sms_plainte_recue, sms_transfert_approuve
 import random
@@ -28,9 +28,25 @@ from .serializers import (
     RegionSerializer, UtilisateurSerializer, UtilisateurCreateSerializer,
     UtilisateurUpdateSerializer, ParametrePlateformeSerializer,
     StatutVignetteSerializer, CodeSecuriteSerializer, HistoriqueConsultationSerializer,
-    PaiementSerializer, DemandeTransfertSerializer,
+    PaiementSerializer, DemandeTransfertSerializer, JournalAuditSerializer,
 )
 from .permissions import AdminOnlyPermission, RoleBasedPermission
+
+
+def log_audit(request, categorie, action, detail='', objet_type='', objet_id='', objet_label=''):
+    u = request.user if request.user and request.user.is_authenticated else None
+    JournalAudit.objects.create(
+        utilisateur=u,
+        utilisateur_email=u.email if u else '',
+        utilisateur_role=u.role if u else '',
+        categorie=categorie,
+        action=action,
+        detail=detail,
+        objet_type=objet_type,
+        objet_id=str(objet_id) if objet_id else '',
+        objet_label=objet_label,
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
 
 
 # =============== AUTH ===============
@@ -49,6 +65,24 @@ class MyCarTokenSerializer(TokenObtainPairSerializer):
 
 class MyCarTokenObtainPairView(TokenObtainPairView):
     serializer_class = MyCarTokenSerializer
+
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        if response.status_code == 200:
+            try:
+                from .models import Utilisateur
+                u = Utilisateur.objects.get(email=request.data.get('email', ''))
+                JournalAudit.objects.create(
+                    utilisateur=u,
+                    utilisateur_email=u.email,
+                    utilisateur_role=u.role,
+                    categorie=CategorieAudit.CONNEXION,
+                    action='Connexion au système',
+                    ip_address=request.META.get('REMOTE_ADDR'),
+                )
+            except Exception:
+                pass
+        return response
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -162,6 +196,30 @@ class HistoriqueConsultationViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [RoleBasedPermission]
     filter_backends = [filters.OrderingFilter]
     ordering = ['-date_consultation']
+
+
+class JournalAuditViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = JournalAuditSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        roles_autorises = {RoleUtilisateur.ADMIN_SYS, RoleUtilisateur.SUP_DGI}
+        if self.request.user.role not in roles_autorises:
+            return JournalAudit.objects.none()
+        qs = JournalAudit.objects.all()
+        categorie = self.request.query_params.get('categorie')
+        user_email = self.request.query_params.get('utilisateur_email')
+        date_debut = self.request.query_params.get('date_debut')
+        date_fin = self.request.query_params.get('date_fin')
+        if categorie:
+            qs = qs.filter(categorie=categorie)
+        if user_email:
+            qs = qs.filter(utilisateur_email__icontains=user_email)
+        if date_debut:
+            qs = qs.filter(date_action__date__gte=date_debut)
+        if date_fin:
+            qs = qs.filter(date_action__date__lte=date_fin)
+        return qs
 
 
 # =============== CODE SÉCURITÉ ===============
@@ -335,6 +393,10 @@ def approuver_vehicule(request, automobile_id):
         action_performee=f'Décision approbation : {decision} | Notes : {notes}',
         ip_address=request.META.get('REMOTE_ADDR'),
     )
+    log_audit(request, CategorieAudit.VEHICULE,
+              f'Approbation véhicule : {decision}',
+              detail=notes,
+              objet_type='Automobile', objet_id=auto.id, objet_label=auto.immatriculation)
 
     return Response({
         'success': True,
@@ -401,6 +463,27 @@ class AdminUtilisateurViewSet(viewsets.ModelViewSet):
             return UtilisateurUpdateSerializer
         return UtilisateurSerializer
 
+    def perform_create(self, serializer):
+        user = serializer.save()
+        log_audit(self.request, CategorieAudit.UTILISATEUR,
+                  f'Création compte utilisateur',
+                  detail=f'Rôle: {user.role}',
+                  objet_type='Utilisateur', objet_id=user.id, objet_label=user.email)
+
+    def perform_update(self, serializer):
+        user = serializer.save()
+        log_audit(self.request, CategorieAudit.UTILISATEUR,
+                  f'Modification compte utilisateur',
+                  detail=f'Rôle: {user.role} | Actif: {user.est_actif}',
+                  objet_type='Utilisateur', objet_id=user.id, objet_label=user.email)
+
+    def perform_destroy(self, instance):
+        log_audit(self.request, CategorieAudit.UTILISATEUR,
+                  f'Suppression compte utilisateur',
+                  detail=f'Rôle: {instance.role}',
+                  objet_type='Utilisateur', objet_id=instance.id, objet_label=instance.email)
+        instance.delete()
+
     @action(detail=True, methods=['post'])
     def reset_password(self, request, pk=None):
         user = self.get_object()
@@ -409,6 +492,9 @@ class AdminUtilisateurViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Le mot de passe doit contenir au moins 8 caractères.'}, status=400)
         user.set_password(new_password)
         user.save(update_fields=['password'])
+        log_audit(request, CategorieAudit.UTILISATEUR,
+                  'Réinitialisation mot de passe',
+                  objet_type='Utilisateur', objet_id=user.id, objet_label=user.email)
         return Response({'success': True, 'message': 'Mot de passe réinitialisé.'})
 
     @action(detail=False, methods=['post'])
@@ -421,6 +507,9 @@ class AdminUtilisateurViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Le nouveau mot de passe doit contenir au moins 8 caractères.'}, status=400)
         request.user.set_password(nouveau)
         request.user.save(update_fields=['password'])
+        log_audit(request, CategorieAudit.UTILISATEUR,
+                  'Changement de mot de passe personnel',
+                  objet_type='Utilisateur', objet_id=request.user.id, objet_label=request.user.email)
         return Response({'success': True, 'message': 'Mot de passe modifié. Veuillez vous reconnecter.'})
 
 
@@ -686,6 +775,16 @@ def public_confirmer_paiement(request, reference):
         action_performee=f'Paiement confirmé | Durée: {paiement.duree_annees} an(s) | Réf: {paiement.reference}',
         ip_address=request.META.get('REMOTE_ADDR'),
     )
+    JournalAudit.objects.create(
+        utilisateur=None,
+        utilisateur_email='portail-contribuable',
+        utilisateur_role='CONTRIBUABLE',
+        categorie=CategorieAudit.PAIEMENT,
+        action='Paiement vignette confirmé',
+        detail=f'Réf: {paiement.reference} | Montant: {paiement.montant} FCFA | Durée: {paiement.duree_annees} an(s)',
+        objet_type='Automobile', objet_id=auto.id, objet_label=auto.immatriculation,
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
 
     return Response({
         'statut':          'CONFIRME',
@@ -914,6 +1013,9 @@ def agent_attribuer_vignette(request, automobile_id):
         action_performee=f'Attribution vignette physique par Agent {request.user.nom} {request.user.prenom}',
         ip_address=request.META.get('REMOTE_ADDR'),
     )
+    log_audit(request, CategorieAudit.DISTRIBUTION,
+              'Attribution vignette physique',
+              objet_type='Automobile', objet_id=auto.id, objet_label=auto.immatriculation)
 
     return Response({
         'success': True,
@@ -1002,6 +1104,11 @@ class DemandeTransfertViewSet(viewsets.ModelViewSet):
             )
             # Notifier le nouveau propriétaire
             sms_transfert_approuve(demande.nouveau_telephone, auto.immatriculation)
+
+        log_audit(request, CategorieAudit.TRANSFERT,
+                  f'Transfert de propriété : {decision}',
+                  detail=f'{demande.ancien_nom} → {demande.nouveau_nom} {demande.nouveau_prenom}',
+                  objet_type='DemandeTransfert', objet_id=demande.id, objet_label=demande.automobile.immatriculation)
 
         return Response({
             'success': True,

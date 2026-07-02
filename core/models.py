@@ -353,3 +353,34 @@ class HistoriqueConsultation(models.Model):
 
     def __str__(self):
         return f"{self.automobile.immatriculation} - {self.action_performee[:50]}"
+
+
+class CategorieAudit(models.TextChoices):
+    CONNEXION    = 'CONNEXION',    'Connexion'
+    VEHICULE     = 'VEHICULE',     'Véhicule'
+    PAIEMENT     = 'PAIEMENT',     'Paiement'
+    UTILISATEUR  = 'UTILISATEUR',  'Utilisateur'
+    DISTRIBUTION = 'DISTRIBUTION', 'Distribution'
+    TRANSFERT    = 'TRANSFERT',    'Transfert'
+    PARAMETRES   = 'PARAMETRES',   'Paramètres'
+    POLICE       = 'POLICE',       'Police'
+
+
+class JournalAudit(models.Model):
+    utilisateur       = models.ForeignKey(Utilisateur, null=True, blank=True, on_delete=models.SET_NULL, related_name='journal')
+    utilisateur_email = models.CharField(max_length=255, blank=True)
+    utilisateur_role  = models.CharField(max_length=50, blank=True)
+    categorie         = models.CharField(max_length=20, choices=CategorieAudit.choices)
+    action            = models.CharField(max_length=200)
+    detail            = models.TextField(blank=True)
+    objet_type        = models.CharField(max_length=50, blank=True)
+    objet_id          = models.CharField(max_length=50, blank=True)
+    objet_label       = models.CharField(max_length=200, blank=True)
+    ip_address        = models.GenericIPAddressField(null=True, blank=True)
+    date_action       = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date_action']
+
+    def __str__(self):
+        return f"[{self.categorie}] {self.utilisateur_email} — {self.action}"

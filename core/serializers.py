@@ -2,7 +2,7 @@ from rest_framework import serializers
 from .models import (
     Region, Utilisateur, Automobile,
     StatutVignette, CodeSecurite, HistoriqueConsultation, Paiement,
-    ParametrePlateforme, DemandeTransfert, Plainte,
+    ParametrePlateforme, DemandeTransfert, Plainte, JournalAudit,
 )
 
 
@@ -175,3 +175,13 @@ class HistoriqueConsultationSerializer(serializers.ModelSerializer):
             'date_consultation', 'action_performee', 'ip_address',
         ]
         read_only_fields = ['date_consultation']
+
+
+class JournalAuditSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = JournalAudit
+        fields = [
+            'id', 'utilisateur_email', 'utilisateur_role', 'categorie',
+            'action', 'detail', 'objet_type', 'objet_id', 'objet_label',
+            'ip_address', 'date_action',
+        ]
