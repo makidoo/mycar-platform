@@ -24,6 +24,7 @@
   <button class="btn btn-sm btn-outline-info"      onclick="filterRole('AGENT_DGI', this)">Agents DGI</button>
   <button class="btn btn-sm btn-outline-warning"   onclick="filterRole('POLICE', this)">Police</button>
   <button class="btn btn-sm btn-outline-secondary" onclick="filterRole('CONTRIBUABLE', this)">Contribuables</button>
+  <button class="btn btn-sm btn-outline-secondary" style="color:#7c3aed;border-color:#7c3aed;" onclick="filterRole('AGENT_DISTRIBUTION', this)">Agents distribution</button>
 </div>
 
 <div class="table-card">
@@ -76,6 +77,7 @@
               <option value="ADMINISTRATEUR_SYSTEME">Administrateur Système</option>
               <option value="SUPERVISEUR_DGI">Superviseur DGI</option>
               <option value="AGENT_DGI">Agent DGI</option>
+              <option value="AGENT_DISTRIBUTION">Agent de distribution</option>
               <option value="POLICE">Police</option>
               <option value="CONTRIBUABLE">Contribuable</option>
             </select>
@@ -148,6 +150,7 @@ const ROLE_BADGES = {
   ADMINISTRATEUR_SYSTEME: '<span class="badge" style="background:#1B3A6B">Admin</span>',
   SUPERVISEUR_DGI:        '<span class="badge bg-success">Superviseur</span>',
   AGENT_DGI:              '<span class="badge bg-info text-dark">Agent DGI</span>',
+  AGENT_DISTRIBUTION:     '<span class="badge" style="background:#7c3aed">Agent distribution</span>',
   POLICE:                 '<span class="badge bg-warning text-dark">Police</span>',
   CONTRIBUABLE:           '<span class="badge bg-secondary">Contribuable</span>',
 };
