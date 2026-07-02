@@ -134,9 +134,7 @@
     ],
     AGENT_DISTRIBUTION: [
       { section: 'Distribution' },
-      { href: '/distribution/', icon: 'box-seam',        label: 'Attribution vignettes' },
-      { section: 'Transferts' },
-      { href: '/transferts/',   icon: 'arrow-left-right', label: 'Transferts de propriété' },
+      { href: '/distribution/', icon: 'box-seam', label: 'Attribution vignettes' },
     ],
     CONTRIBUABLE: [],
   };
@@ -149,6 +147,9 @@
 
     if (_user.role === 'POLICE' && !window.location.pathname.startsWith('/verification')) {
       window.location.href = '/verification/';
+    }
+    if (_user.role === 'AGENT_DISTRIBUTION' && !window.location.pathname.startsWith('/distribution')) {
+      window.location.href = '/distribution/';
     }
     if (_user.role === 'CONTRIBUABLE') {
       Api.logout();
