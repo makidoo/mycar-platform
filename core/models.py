@@ -84,6 +84,10 @@ class Utilisateur(AbstractBaseUser):
     est_actif = models.BooleanField(default=True)
     date_creation = models.DateTimeField(auto_now_add=True)
 
+    @property
+    def is_active(self):
+        return self.est_actif
+
     USERNAME_FIELD = 'email'
     objects = UtilisateurManager()
 
