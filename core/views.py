@@ -937,7 +937,7 @@ def agent_rechercher_vehicule(request):
     Recherche d'un véhicule par immatriculation (Agent de distribution).
     Retourne les infos nécessaires à la remise physique de vignette.
     """
-    roles_autorises = {RoleUtilisateur.AGENT_DISTRIB, RoleUtilisateur.ADMIN_SYS, RoleUtilisateur.SUP_DGI}
+    roles_autorises = {RoleUtilisateur.AGENT_DISTRIB, RoleUtilisateur.AGENT_DGI, RoleUtilisateur.ADMIN_SYS, RoleUtilisateur.SUP_DGI}
     if request.user.role not in roles_autorises:
         return Response({'error': 'Accès non autorisé.'}, status=403)
 
@@ -960,6 +960,7 @@ def agent_rechercher_vehicule(request):
         'proprietaire': f"{auto.nom} {auto.prenom}",
         'telephone': auto.telephone,
         'marque': f"{auto.marque} {auto.modele or ''}".strip(),
+        'montant_taxe': float(auto.montant_taxe),
         'statut_approbation': auto.statut_approbation,
         'statut_vignette': s.statut if s else 'ROUGE',
         'statut_physique': s.statut_physique if s else 'NON_ATTRIBUE',
@@ -967,6 +968,89 @@ def agent_rechercher_vehicule(request):
         'paiement_confirme': Paiement.objects.filter(
             automobile=auto, statut=StatutPaiement.CONFIRME
         ).order_by('-date_confirmation').first() is not None,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def agent_paiement_agence(request, automobile_id):
+    """
+    Paiement en agence : l'agent règle la vignette pour le compte du contribuable.
+    Pas d'OTP requis — l'agent est physiquement présent et authentifié.
+    """
+    roles_autorises = {RoleUtilisateur.AGENT_DISTRIB, RoleUtilisateur.AGENT_DGI, RoleUtilisateur.ADMIN_SYS}
+    if request.user.role not in roles_autorises:
+        return Response({'error': 'Accès non autorisé.'}, status=403)
+
+    try:
+        auto = Automobile.objects.select_related('statut_actuel', 'region').get(id=automobile_id)
+    except Automobile.DoesNotExist:
+        return Response({'error': 'Véhicule introuvable.'}, status=404)
+
+    if auto.statut_approbation != StatutApprobationVehicule.APPROUVE:
+        return Response({'error': 'Ce véhicule n\'est pas approuvé.'}, status=400)
+
+    if Paiement.objects.filter(automobile=auto, statut=StatutPaiement.CONFIRME).exists():
+        return Response({'error': 'Un paiement est déjà confirmé pour ce véhicule.'}, status=400)
+
+    operateur    = request.data.get('operateur', '').strip().upper()
+    telephone    = request.data.get('telephone', '').strip()
+    duree_annees = int(request.data.get('duree_annees', 1))
+
+    if operateur not in OperateurPaiement.values:
+        return Response({'error': f'Opérateur invalide. Valeurs : {OperateurPaiement.values}'}, status=400)
+    if not telephone:
+        return Response({'error': 'Le numéro de téléphone est obligatoire.'}, status=400)
+    if duree_annees not in [1, 2, 3]:
+        return Response({'error': 'duree_annees doit être 1, 2 ou 3.'}, status=400)
+
+    montant = auto.montant_taxe * duree_annees
+    date_fin = timezone.now().date() + timedelta(days=365 * duree_annees)
+
+    # Annuler les paiements EN_ATTENTE existants
+    Paiement.objects.filter(automobile=auto, statut=StatutPaiement.EN_ATTENTE).update(statut=StatutPaiement.ECHOUE)
+
+    # Créer et confirmer immédiatement le paiement
+    paiement = Paiement.objects.create(
+        automobile=auto,
+        montant=montant,
+        duree_annees=duree_annees,
+        operateur=operateur,
+        telephone=telephone,
+        statut=StatutPaiement.CONFIRME,
+        date_confirmation=timezone.now(),
+    )
+
+    # Créer la vignette VERT
+    sv = StatutVignette.objects.create(
+        automobile=auto,
+        statut=StatutVignetteChoix.VERT,
+        date_debut_validite=timezone.now().date(),
+        date_fin_validite=date_fin,
+        type_modification=TypeModification.MANUELLE,
+        operateur=request.user,
+        notes_admin=f'Paiement en agence par {request.user.nom} {request.user.prenom}',
+        mobile_payment_ref=paiement.reference,
+    )
+    auto.statut_actuel = sv
+    auto.save(update_fields=['statut_actuel'])
+    paiement.statut_vignette = sv
+    paiement.save(update_fields=['statut_vignette'])
+
+    sms_confirmation_paiement(auto.telephone, auto.immatriculation, float(montant), paiement.reference)
+
+    log_audit(request, CategorieAudit.PAIEMENT,
+              'Paiement en agence pour le compte du contribuable',
+              detail=f'Montant: {montant} FCFA | Durée: {duree_annees} an(s) | Opérateur: {operateur} | Tél: {telephone}',
+              objet_type='Automobile', objet_id=auto.id, objet_label=auto.immatriculation)
+
+    return Response({
+        'success':    True,
+        'reference':  paiement.reference,
+        'montant':    float(montant),
+        'duree_annees': duree_annees,
+        'date_fin':   date_fin.isoformat(),
+        'statut_vignette': sv.statut,
     })
 
 

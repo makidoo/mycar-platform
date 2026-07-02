@@ -39,8 +39,45 @@
         <!-- Conditions d'attribution -->
         <div id="conditions-panel" class="mb-3"></div>
 
+        <!-- Formulaire paiement en agence -->
+        <div id="panel-paiement" class="d-none mt-3 p-3 rounded" style="background:#fffbeb;border:1px solid #fcd34d;">
+          <div class="fw-semibold mb-2 small"><i class="bi bi-cash-coin me-2 text-warning"></i>Paiement en agence — pour le compte du contribuable</div>
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label small">Durée</label>
+              <select id="pay-duree" class="form-select form-select-sm" onchange="updateMontantAgence()">
+                <option value="1">1 an</option>
+                <option value="2">2 ans</option>
+                <option value="3">3 ans</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small">Montant</label>
+              <div id="pay-montant" class="form-control form-control-sm bg-light fw-semibold text-success">—</div>
+            </div>
+            <div class="col-6">
+              <label class="form-label small">Opérateur</label>
+              <select id="pay-operateur" class="form-select form-select-sm">
+                <option value="NITA">NITA</option>
+                <option value="ORANGE_MONEY">Orange Money</option>
+                <option value="AIRTEL_MONEY">Airtel Money</option>
+                <option value="AMANATA">Amanata</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small">Téléphone contribuable</label>
+              <input type="tel" id="pay-telephone" class="form-control form-control-sm" placeholder="+227...">
+            </div>
+            <div class="col-12 mt-1">
+              <button class="btn btn-warning w-100 btn-sm fw-semibold" onclick="payerEnAgence()">
+                <i class="bi bi-cash-coin me-2"></i>Confirmer le paiement en agence
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- Bouton attribution -->
-        <button id="btn-attribuer" class="btn btn-success w-100 d-none" onclick="attribuerVignette()">
+        <button id="btn-attribuer" class="btn btn-success w-100 d-none mt-2" onclick="attribuerVignette()">
           <i class="bi bi-check-circle me-2"></i>Confirmer l'attribution de la vignette physique
         </button>
 
@@ -135,6 +172,17 @@ function afficherResultat(v) {
         </div>`).join('')}
     </div>`;
 
+  // Paiement en agence si non payé mais approuvé
+  const panelPaiement = document.getElementById('panel-paiement');
+  const peutPayer = v.statut_approbation === 'APPROUVE' && !v.paiement_confirme;
+  if (peutPayer) {
+    panelPaiement.classList.remove('d-none');
+    document.getElementById('pay-telephone').value = v.telephone || '';
+    updateMontantAgence();
+  } else {
+    panelPaiement.classList.add('d-none');
+  }
+
   // Bouton attribution
   const peutAttribuer = conditions.every(c => c.ok);
   const btn = document.getElementById('btn-attribuer');
@@ -215,6 +263,57 @@ async function chargerHistoriqueJour() {
         </tr>`).join('')}
     </tbody>
   </table>`;
+}
+
+function updateMontantAgence() {
+  if (!vehiculeEnCours) return;
+  const duree = parseInt(document.getElementById('pay-duree').value);
+  const montant = (vehiculeEnCours.montant_taxe || 0) * duree;
+  document.getElementById('pay-montant').textContent =
+    montant.toLocaleString('fr-FR') + ' FCFA';
+}
+
+async function payerEnAgence() {
+  if (!vehiculeEnCours) return;
+  const alertEl  = document.getElementById('action-alert');
+  const operateur  = document.getElementById('pay-operateur').value;
+  const telephone  = document.getElementById('pay-telephone').value.trim();
+  const duree      = parseInt(document.getElementById('pay-duree').value);
+
+  if (!telephone) {
+    alertEl.className = 'alert alert-danger py-2 small mt-2';
+    alertEl.textContent = 'Le numéro de téléphone est obligatoire.';
+    alertEl.classList.remove('d-none');
+    return;
+  }
+
+  const btn = document.querySelector('#panel-paiement button');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Traitement…';
+
+  const result = await Api.post(`/agent/paiement/${vehiculeEnCours.id}/`, {
+    operateur, telephone, duree_annees: duree,
+  });
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="bi bi-cash-coin me-2"></i>Confirmer le paiement en agence';
+
+  if (result?.ok) {
+    alertEl.className = 'alert alert-success py-2 small mt-2';
+    alertEl.innerHTML = `<i class="bi bi-check-circle me-2"></i>Paiement confirmé — Réf : <strong>${result.data.reference}</strong>. Vignette valable jusqu'au ${new Date(result.data.date_fin).toLocaleDateString('fr-FR')}.`;
+    alertEl.classList.remove('d-none');
+    document.getElementById('panel-paiement').classList.add('d-none');
+    vehiculeEnCours.paiement_confirme = true;
+    // Afficher le bouton d'attribution
+    document.getElementById('btn-attribuer').classList.remove('d-none');
+    // Mettre à jour la condition paiement dans le panneau
+    rechercherVehicule();
+    chargerHistoriqueJour();
+  } else {
+    alertEl.className = 'alert alert-danger py-2 small mt-2';
+    alertEl.textContent = result?.data?.error || 'Erreur lors du paiement.';
+    alertEl.classList.remove('d-none');
+  }
 }
 
 // Listener touche Entrée
