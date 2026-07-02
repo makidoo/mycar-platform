@@ -136,7 +136,8 @@
 <script>
   if (Api.getToken()) {
     const u = Api.getUser();
-    window.location.href = u?.role === 'POLICE' ? '/verification/' : '/dashboard/';
+    const roleRedirects = { POLICE: '/verification/', AGENT_DISTRIBUTION: '/distribution/' };
+      window.location.href = roleRedirects[u?.role] || '/dashboard/';
   }
 
   document.querySelectorAll('.demo-btn').forEach(btn => {
@@ -170,7 +171,8 @@
     if (result?.ok) {
       Api.setTokens(result.data.access, result.data.refresh);
       const u = Api.getUser();
-      window.location.href = u?.role === 'POLICE' ? '/verification/' : '/dashboard/';
+      const roleRedirects = { POLICE: '/verification/', AGENT_DISTRIBUTION: '/distribution/' };
+      window.location.href = roleRedirects[u?.role] || '/dashboard/';
     } else {
       alert.textContent = 'Email ou mot de passe incorrect.';
       alert.classList.remove('d-none');
