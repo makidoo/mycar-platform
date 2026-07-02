@@ -84,7 +84,12 @@ class Command(BaseCommand):
             email='contribuable@mycar.ne', password='Admin1234!',
             role=RoleUtilisateur.CONTRIBUABLE, nom='Mahamadou', prenom='Issoufou',
         )
-        self.stdout.write('  5 utilisateurs créés')
+        Utilisateur.objects.create_user(
+            email='distribution@mycar.ne', password='Admin1234!',
+            role=RoleUtilisateur.AGENT_DISTRIB, nom='Agent', prenom='Distribution',
+            region=regions['Niamey'],
+        )
+        self.stdout.write('  6 utilisateurs créés')
 
         # Véhicules
         now = timezone.now()
@@ -154,3 +159,4 @@ class Command(BaseCommand):
         self.stdout.write('  agent@mycar.ne          / Admin1234!  (Agent DGI — région: Niamey)')
         self.stdout.write('  police@mycar.ne         / Admin1234!  (Police)')
         self.stdout.write('  contribuable@mycar.ne   / Admin1234!  (Contribuable — immat: NIA-001-A, tél: 0022790000001)')
+        self.stdout.write('  distribution@mycar.ne   / Admin1234!  (Agent de distribution — région: Niamey)')
