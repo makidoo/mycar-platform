@@ -110,6 +110,30 @@
   </div>
 </div>
 
+<!-- Modal suppression -->
+<div class="modal fade" id="modal-delete" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title text-danger"><i class="bi bi-trash me-2"></i>Supprimer</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-1">Confirmer la suppression de :</p>
+        <p class="fw-semibold mb-0" id="delete-user-name"></p>
+        <input type="hidden" id="delete-user-id">
+        <p class="text-danger small mt-2 mb-0"><i class="bi bi-exclamation-triangle me-1"></i>Cette action est irréversible.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button class="btn btn-danger" onclick="supprimerUser()">
+          <i class="bi bi-trash me-1"></i>Supprimer
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal mot de passe -->
 <div class="modal fade" id="modal-password" tabindex="-1">
   <div class="modal-dialog modal-sm">
@@ -198,6 +222,9 @@ function renderUsers() {
                   title="${u.est_actif ? 'Désactiver' : 'Activer'}">
             <i class="bi bi-${u.est_actif ? 'pause-circle' : 'play-circle'}"></i>
           </button>
+          <button class="btn btn-sm btn-outline-danger py-0" onclick="confirmerSuppression(${u.id}, '${u.nom} ${u.prenom}')" title="Supprimer">
+            <i class="bi bi-trash"></i>
+          </button>
         </div>
       </td>
     </tr>`).join('');
@@ -261,6 +288,26 @@ async function sauvegarderUser() {
     const err = result?.data;
     alertEl.innerHTML = err ? Object.entries(err).map(([k,v]) => `<b>${k}</b>: ${Array.isArray(v)?v.join(', '):v}`).join('<br>') : 'Erreur.';
     alertEl.classList.remove('d-none');
+  }
+}
+
+const modalDelete = new bootstrap.Modal(document.getElementById('modal-delete'));
+
+function confirmerSuppression(id, nom) {
+  document.getElementById('delete-user-id').value = id;
+  document.getElementById('delete-user-name').textContent = nom;
+  modalDelete.show();
+}
+
+async function supprimerUser() {
+  const id = document.getElementById('delete-user-id').value;
+  const ok = await Api.delete(`/admin/utilisateurs/${id}/`);
+  if (ok) {
+    modalDelete.hide();
+    showToast('Utilisateur supprimé.');
+    loadUsers();
+  } else {
+    showToast('Erreur lors de la suppression.', 'error');
   }
 }
 
