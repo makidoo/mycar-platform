@@ -39,10 +39,20 @@ def calculer_date_fin_vignette(annee_achat, duree_annees):
     return date(annee_achat + duree_annees - 1, 12, 31)
 
 
+def get_taux_penalite():
+    """Lit le taux de pénalité mensuel depuis les paramètres (défaut 5%)."""
+    try:
+        p = ParametrePlateforme.objects.get(cle='taux_penalite_mensuel')
+        return int(p.valeur)
+    except Exception:
+        return 5
+
+
 def calculer_penalite(automobile):
     """
     Retourne (nb_mois, taux_pct, montant_penalite) pour un véhicule ORANGE.
-    Pénalité = 5% par mois entier écoulé depuis le 1er janvier de l'année suivant l'expiration.
+    Pénalité = taux_penalite_mensuel% par mois entier écoulé depuis le 1er janvier
+    de l'année suivant l'expiration.
     """
     from datetime import date as date_cls
     sv = automobile.statut_actuel
@@ -54,7 +64,8 @@ def calculer_penalite(automobile):
     if today <= jan1:
         return 0, 0, 0
     nb_mois = (today.year - jan1.year) * 12 + (today.month - jan1.month)
-    taux_pct = nb_mois * 5
+    taux_mensuel = get_taux_penalite()
+    taux_pct = nb_mois * taux_mensuel
     montant_penalite = float(automobile.montant_taxe) * taux_pct / 100
     return nb_mois, taux_pct, montant_penalite
 
@@ -549,8 +560,9 @@ PARAMETRES_DEFAUT = [
     ('nom_plateforme',     'MY CAR',                                                          'Nom affiché de la plateforme'),
     ('nom_organisation',   'DGI — République du Niger',                                       'Nom de l\'organisation'),
     ('devise',             'FCFA',                                                             'Devise utilisée pour les montants'),
-    ('duree_vignette_jours', '365',                                                            'Durée de validité d\'une vignette (en jours)'),
-    ('otp_expiration_minutes', '10',                                                           'Durée de validité d\'un OTP (en minutes)'),
+    ('regle_validite_vignette', 'ANNEE_CIVILE',                                                 'Règle de validité : vignette valable jusqu\'au 31 décembre de l\'année d\'achat'),
+    ('taux_penalite_mensuel',  '5',                                                             'Taux de pénalité de retard par mois (en %)'),
+    ('otp_expiration_minutes', '10',                                                            'Durée de validité d\'un OTP (en minutes)'),
 ]
 
 class ParametrePlateformeViewSet(viewsets.ModelViewSet):

@@ -44,7 +44,7 @@
 const PARAM_GROUPS = {
   identite: ['nom_plateforme', 'nom_organisation', 'devise'],
   roles:    ['dashboard_roles', 'vehicules_roles', 'saisie_roles', 'verification_roles'],
-  tech:     ['duree_vignette_jours', 'otp_expiration_minutes'],
+  tech:     ['regle_validite_vignette', 'taux_penalite_mensuel', 'otp_expiration_minutes'],
 };
 
 const ROLE_OPTIONS = [
@@ -71,7 +71,7 @@ async function loadParametres() {
 function renderAll() {
   renderSection('identite', PARAM_GROUPS.identite, 'text');
   renderRolesSection();
-  renderSection('tech', PARAM_GROUPS.tech, 'number');
+  renderTechSection();
 }
 
 function renderSection(sectionId, cles, inputType) {
@@ -86,6 +86,66 @@ function renderSection(sectionId, cles, inputType) {
                value="${p.valeur}" data-id="${p.id}" data-cle="${cle}">
       </div>`;
   }).join('');
+}
+
+function renderTechSection() {
+  const el = document.getElementById('section-tech');
+  const html = [];
+
+  // Règle de validité — lecture seule (règle fiscale)
+  const pRegle = parametres['regle_validite_vignette'];
+  if (pRegle) {
+    html.push(`
+      <div class="col-12">
+        <label class="form-label fw-semibold">${pRegle.description}</label>
+        <div class="p-3 rounded d-flex align-items-start gap-3"
+             style="background:#f0fdf4; border:1px solid #bbf7d0;">
+          <i class="bi bi-calendar-check-fill text-success mt-1" style="font-size:1.3rem;"></i>
+          <div>
+            <div class="fw-semibold text-success">Année civile (31 décembre)</div>
+            <div class="small text-muted mt-1">
+              La vignette est valable jusqu'au <strong>31 décembre</strong> de l'année d'achat,
+              quelle que soit la date d'achat. Le 1er janvier de l'année suivante, elle passe
+              automatiquement <strong>ORANGE</strong>. Si elle n'est pas renouvelée dans l'année,
+              elle passe <strong>ROUGE</strong> le 1er janvier de l'année d'après.
+            </div>
+          </div>
+        </div>
+        <input type="hidden" id="param-regle_validite_vignette"
+               data-id="${pRegle.id}" data-cle="regle_validite_vignette" value="${pRegle.valeur}">
+      </div>`);
+  }
+
+  // Taux de pénalité — liste déroulante
+  const pTaux = parametres['taux_penalite_mensuel'];
+  if (pTaux) {
+    const options = [1,2,3,4,5,6,7,8,9,10].map(v =>
+      `<option value="${v}" ${pTaux.valeur == v ? 'selected' : ''}>${v}% par mois</option>`
+    ).join('');
+    html.push(`
+      <div class="col-md-6">
+        <label class="form-label fw-semibold">${pTaux.description}</label>
+        <select class="form-select" id="param-taux_penalite_mensuel"
+                data-id="${pTaux.id}" data-cle="taux_penalite_mensuel">
+          ${options}
+        </select>
+        <div class="form-text">Appliqué dès le 1er janvier de l'année suivant l'expiration.</div>
+      </div>`);
+  }
+
+  // OTP expiration — champ numérique classique
+  const pOtp = parametres['otp_expiration_minutes'];
+  if (pOtp) {
+    html.push(`
+      <div class="col-md-6">
+        <label class="form-label fw-semibold">${pOtp.description}</label>
+        <input type="number" class="form-control" id="param-otp_expiration_minutes"
+               value="${pOtp.valeur}" data-id="${pOtp.id}" data-cle="otp_expiration_minutes"
+               min="1" max="60">
+      </div>`);
+  }
+
+  el.innerHTML = html.join('');
 }
 
 function renderRolesSection() {
