@@ -346,10 +346,26 @@
         <div class="form-text">Le débit sera effectué sur ce numéro.</div>
       </div>
 
-      <div class="d-flex justify-content-between align-items-center p-3 rounded mb-3"
+      <!-- Détail pénalité si applicable -->
+      <div id="recap-penalite-bloc" class="d-none p-3 rounded mb-3" style="background:#fff7ed;border:1.5px solid #fed7aa;">
+        <div class="d-flex justify-content-between small mb-1">
+          <span class="text-muted">Vignette (<span id="recap-duree-label">1 an</span>)</span>
+          <span id="recap-montant-base">—</span>
+        </div>
+        <div class="d-flex justify-content-between small mb-1 text-danger">
+          <span><i class="bi bi-exclamation-triangle me-1"></i>Pénalité retard (<span id="recap-mois-retard">0</span> mois × 5%)</span>
+          <span id="recap-montant-penalite">—</span>
+        </div>
+        <hr class="my-1">
+        <div class="d-flex justify-content-between fw-bold">
+          <span>Total à payer</span>
+          <span class="text-primary" id="recap-montant">—</span>
+        </div>
+      </div>
+      <div id="recap-normal-bloc" class="d-flex justify-content-between align-items-center p-3 rounded mb-3"
            style="background:#f8fafc; border:1.5px solid #e2e8f0;">
         <span class="text-muted">Montant à payer</span>
-        <strong class="fs-5 text-primary" id="recap-montant">—</strong>
+        <strong class="fs-5 text-primary" id="recap-montant-simple">—</strong>
       </div>
 
       <div id="pay-error" class="alert alert-danger d-none py-2 small"></div>
@@ -634,9 +650,27 @@ function selectDuree(annees, el) {
 
 function updateMontantRecap() {
   if (!vehicleData) return;
-  const total = vehicleData.montant_taxe * dureeAnnees;
-  document.getElementById('recap-montant').textContent = `${Number(total).toLocaleString('fr-FR')} FCFA`;
-  document.getElementById('vh-montant').textContent    = `${Number(total).toLocaleString('fr-FR')} FCFA`;
+  const base      = vehicleData.montant_taxe * dureeAnnees;
+  const penalite  = vehicleData.penalite || 0;
+  const nbMois    = vehicleData.nb_mois_retard || 0;
+  const total     = base + penalite;
+  const fmt = v => `${Number(v).toLocaleString('fr-FR')} FCFA`;
+
+  document.getElementById('vh-montant').textContent = fmt(total);
+
+  if (penalite > 0) {
+    document.getElementById('recap-penalite-bloc').classList.remove('d-none');
+    document.getElementById('recap-normal-bloc').classList.add('d-none');
+    document.getElementById('recap-duree-label').textContent  = `${dureeAnnees} an${dureeAnnees > 1 ? 's' : ''}`;
+    document.getElementById('recap-montant-base').textContent = fmt(base);
+    document.getElementById('recap-mois-retard').textContent  = nbMois;
+    document.getElementById('recap-montant-penalite').textContent = fmt(penalite);
+    document.getElementById('recap-montant').textContent      = fmt(total);
+  } else {
+    document.getElementById('recap-penalite-bloc').classList.add('d-none');
+    document.getElementById('recap-normal-bloc').classList.remove('d-none');
+    document.getElementById('recap-montant-simple').textContent = fmt(total);
+  }
 }
 
 // ── Affichage fiche ───────────────────────────────────────────
@@ -656,10 +690,26 @@ function afficherVehicule() {
   document.getElementById('vh-proprietaire').textContent = v.proprietaire;
   document.getElementById('vh-marque').textContent   = v.marque;
   document.getElementById('vh-type').textContent     = v.type_vehicule;
-  // Tarifs par durée
+  // Calculer pénalité côté client (5% par mois depuis le 1er jan de l'année suivant l'expiration)
+  vehicleData.penalite       = 0;
+  vehicleData.nb_mois_retard = 0;
+  if (v.statut === 'ORANGE' && v.date_fin_validite) {
+    const anneeExp = new Date(v.date_fin_validite).getFullYear();
+    const jan1     = new Date(anneeExp + 1, 0, 1);
+    const today    = new Date();
+    if (today > jan1) {
+      const nbMois = (today.getFullYear() - jan1.getFullYear()) * 12 + (today.getMonth() - jan1.getMonth());
+      vehicleData.nb_mois_retard = nbMois;
+      vehicleData.penalite       = v.montant_taxe * nbMois * 0.05;
+    }
+  }
+
+  // Tarifs par durée (pénalité fixe, s'ajoute une seule fois)
   [1, 2, 3].forEach(y => {
-    document.getElementById(`price-${y}`).textContent = `${Number(v.montant_taxe * y).toLocaleString('fr-FR')} FCFA`;
+    const total = v.montant_taxe * y + vehicleData.penalite;
+    document.getElementById(`price-${y}`).textContent = `${Number(total).toLocaleString('fr-FR')} FCFA`;
   });
+
   // Réinitialiser la sélection à 1 an
   dureeAnnees = 1;
   document.querySelectorAll('.duration-btn').forEach((b, i) => {
@@ -667,8 +717,7 @@ function afficherVehicule() {
     b.style.borderColor = i === 0 ? 'var(--primary)' : '';
     b.style.background  = i === 0 ? '#d1fae5' : '';
   });
-  document.getElementById('vh-montant').textContent   = `${Number(v.montant_taxe).toLocaleString('fr-FR')} FCFA`;
-  document.getElementById('recap-montant').textContent = `${Number(v.montant_taxe).toLocaleString('fr-FR')} FCFA`;
+  updateMontantRecap();
 }
 
 // ── Opérateur ─────────────────────────────────────────────────
@@ -703,6 +752,15 @@ async function initierPaiement() {
 
   const data = await r.json();
   currentRef = data.reference;
+  // Mettre à jour le montant affiché avec la valeur confirmée par le serveur (inclut pénalité réelle)
+  if (data.taux_penalite > 0) {
+    document.getElementById('recap-penalite-bloc').classList.remove('d-none');
+    document.getElementById('recap-normal-bloc').classList.add('d-none');
+    document.getElementById('recap-mois-retard').textContent = data.nb_mois_retard;
+    document.getElementById('recap-montant-base').textContent = `${Number(data.montant_base).toLocaleString('fr-FR')} FCFA`;
+    document.getElementById('recap-montant-penalite').textContent = `${Number(data.montant_penalite).toLocaleString('fr-FR')} FCFA`;
+    document.getElementById('recap-montant').textContent = `${Number(data.montant).toLocaleString('fr-FR')} FCFA`;
+  }
   const opLabels = { NITA:'NITA', AMANATA:'Amanata', ORANGE_MONEY:'ZamaniCash', AIRTEL_MONEY:'Airtel Money' };
   document.getElementById('ref-display').textContent = currentRef;
   document.getElementById('processing-msg').textContent =

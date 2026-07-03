@@ -33,6 +33,32 @@ from .serializers import (
 from .permissions import AdminOnlyPermission, RoleBasedPermission
 
 
+def calculer_date_fin_vignette(annee_achat, duree_annees):
+    """Une vignette couvre des années civiles entières : valide jusqu'au 31/12 de (annee_achat + duree_annees - 1)."""
+    from datetime import date
+    return date(annee_achat + duree_annees - 1, 12, 31)
+
+
+def calculer_penalite(automobile):
+    """
+    Retourne (nb_mois, taux_pct, montant_penalite) pour un véhicule ORANGE.
+    Pénalité = 5% par mois entier écoulé depuis le 1er janvier de l'année suivant l'expiration.
+    """
+    from datetime import date as date_cls
+    sv = automobile.statut_actuel
+    if not sv or sv.statut != StatutVignetteChoix.ORANGE:
+        return 0, 0, 0
+    annee_expiration = sv.date_fin_validite.year
+    jan1 = date_cls(annee_expiration + 1, 1, 1)
+    today = timezone.now().date()
+    if today <= jan1:
+        return 0, 0, 0
+    nb_mois = (today.year - jan1.year) * 12 + (today.month - jan1.month)
+    taux_pct = nb_mois * 5
+    montant_penalite = float(automobile.montant_taxe) * taux_pct / 100
+    return nb_mois, taux_pct, montant_penalite
+
+
 def log_audit(request, categorie, action, detail='', objet_type='', objet_id='', objet_label=''):
     u = request.user if request.user and request.user.is_authenticated else None
     JournalAudit.objects.create(
@@ -699,22 +725,34 @@ def public_initier_paiement(request):
 
     Paiement.objects.filter(automobile=auto, statut=StatutPaiement.EN_ATTENTE).update(statut=StatutPaiement.ECHOUE)
 
+    nb_mois, taux_pct, montant_penalite = calculer_penalite(auto)
+    montant_base = float(auto.montant_taxe) * duree_annees
+    montant_total = montant_base + montant_penalite
+
+    annee_achat = timezone.now().year
+    date_fin = calculer_date_fin_vignette(annee_achat, duree_annees)
+
     paiement = Paiement.objects.create(
         automobile=auto,
         otp=otp,
-        montant=auto.montant_taxe * duree_annees,
+        montant=montant_total,
         duree_annees=duree_annees,
         operateur=operateur,
         telephone=telephone,
     )
 
     return Response({
-        'reference': paiement.reference,
-        'montant':   float(paiement.montant),
-        'operateur': paiement.operateur,
-        'telephone': paiement.telephone,
-        'statut':    paiement.statut,
-        'message':   f'Demande envoyée. Confirmez sur votre téléphone.',
+        'reference':         paiement.reference,
+        'montant':           float(paiement.montant),
+        'montant_base':      montant_base,
+        'montant_penalite':  montant_penalite,
+        'taux_penalite':     taux_pct,
+        'nb_mois_retard':    nb_mois,
+        'date_fin':          date_fin.isoformat(),
+        'operateur':         paiement.operateur,
+        'telephone':         paiement.telephone,
+        'statut':            paiement.statut,
+        'message':           'Demande envoyée. Confirmez sur votre téléphone.',
     }, status=201)
 
 
@@ -735,7 +773,7 @@ def public_confirmer_paiement(request, reference):
 
     # Simulation : création de la nouvelle vignette VERT
     auto = paiement.automobile
-    date_fin = timezone.now().date() + timedelta(days=365 * paiement.duree_annees)
+    date_fin = calculer_date_fin_vignette(timezone.now().year, paiement.duree_annees)
     physique_precedent = auto.statut_actuel.statut_physique if auto.statut_actuel else StatutPhysiqueVignette.NON_ATTRIBUE
     sv = StatutVignette.objects.create(
         automobile=auto,
@@ -1006,8 +1044,9 @@ def agent_paiement_agence(request, automobile_id):
     if duree_annees not in [1, 2, 3]:
         return Response({'error': 'duree_annees doit être 1, 2 ou 3.'}, status=400)
 
-    montant = auto.montant_taxe * duree_annees
-    date_fin = timezone.now().date() + timedelta(days=365 * duree_annees)
+    nb_mois_ag, taux_pct_ag, montant_penalite_ag = calculer_penalite(auto)
+    montant = float(auto.montant_taxe) * duree_annees + montant_penalite_ag
+    date_fin = calculer_date_fin_vignette(timezone.now().year, duree_annees)
 
     # Annuler les paiements EN_ATTENTE existants
     Paiement.objects.filter(automobile=auto, statut=StatutPaiement.EN_ATTENTE).update(statut=StatutPaiement.ECHOUE)
@@ -1049,12 +1088,14 @@ def agent_paiement_agence(request, automobile_id):
               objet_type='Automobile', objet_id=auto.id, objet_label=auto.immatriculation)
 
     return Response({
-        'success':    True,
-        'reference':  paiement.reference,
-        'montant':    float(montant),
-        'duree_annees': duree_annees,
-        'date_fin':   date_fin.isoformat(),
-        'statut_vignette': sv.statut,
+        'success':          True,
+        'reference':        paiement.reference,
+        'montant':          float(montant),
+        'montant_penalite': montant_penalite_ag,
+        'taux_penalite':    taux_pct_ag,
+        'duree_annees':     duree_annees,
+        'date_fin':         date_fin.isoformat(),
+        'statut_vignette':  sv.statut,
     })
 
 

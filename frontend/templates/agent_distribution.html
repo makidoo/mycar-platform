@@ -42,6 +42,12 @@
         <!-- Formulaire paiement en agence -->
         <div id="panel-paiement" class="d-none mt-3 p-3 rounded" style="background:#fffbeb;border:1px solid #fcd34d;">
           <div class="fw-semibold mb-2 small"><i class="bi bi-cash-coin me-2 text-warning"></i>Paiement en agence — pour le compte du contribuable</div>
+          <!-- Alerte pénalité -->
+          <div id="pay-penalite-info" class="d-none alert alert-danger py-2 small mb-2">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            Pénalité de retard : <strong id="pay-penalite-taux"></strong> (<span id="pay-penalite-mois"></span> mois × 5%)
+            — Montant pénalité : <strong id="pay-penalite-montant"></strong>
+          </div>
           <div class="row g-2">
             <div class="col-6">
               <label class="form-label small">Durée</label>
@@ -52,7 +58,7 @@
               </select>
             </div>
             <div class="col-6">
-              <label class="form-label small">Montant</label>
+              <label class="form-label small">Montant total</label>
               <div id="pay-montant" class="form-control form-control-sm bg-light fw-semibold text-success">—</div>
             </div>
             <div class="col-6">
@@ -265,12 +271,39 @@ async function chargerHistoriqueJour() {
   </table>`;
 }
 
+function calculerPenaliteAgence() {
+  if (!vehiculeEnCours || vehiculeEnCours.statut_vignette !== 'ORANGE') return { nbMois: 0, taux: 0, montant: 0 };
+  const dateFin = vehiculeEnCours.date_fin_validite;
+  if (!dateFin) return { nbMois: 0, taux: 0, montant: 0 };
+  const anneeExp = new Date(dateFin).getFullYear();
+  const jan1     = new Date(anneeExp + 1, 0, 1);
+  const today    = new Date();
+  if (today <= jan1) return { nbMois: 0, taux: 0, montant: 0 };
+  const nbMois  = (today.getFullYear() - jan1.getFullYear()) * 12 + (today.getMonth() - jan1.getMonth());
+  const taux    = nbMois * 5;
+  const montant = (vehiculeEnCours.montant_taxe || 0) * taux / 100;
+  return { nbMois, taux, montant };
+}
+
 function updateMontantAgence() {
   if (!vehiculeEnCours) return;
-  const duree = parseInt(document.getElementById('pay-duree').value);
-  const montant = (vehiculeEnCours.montant_taxe || 0) * duree;
-  document.getElementById('pay-montant').textContent =
-    montant.toLocaleString('fr-FR') + ' FCFA';
+  const duree   = parseInt(document.getElementById('pay-duree').value);
+  const base    = (vehiculeEnCours.montant_taxe || 0) * duree;
+  const pen     = calculerPenaliteAgence();
+  const total   = base + pen.montant;
+  const fmt     = v => Number(v).toLocaleString('fr-FR') + ' FCFA';
+
+  document.getElementById('pay-montant').textContent = fmt(total);
+
+  const penBloc = document.getElementById('pay-penalite-info');
+  if (pen.nbMois > 0) {
+    penBloc.classList.remove('d-none');
+    document.getElementById('pay-penalite-taux').textContent   = pen.taux + '%';
+    document.getElementById('pay-penalite-mois').textContent   = pen.nbMois;
+    document.getElementById('pay-penalite-montant').textContent = fmt(pen.montant);
+  } else {
+    penBloc.classList.add('d-none');
+  }
 }
 
 async function payerEnAgence() {
