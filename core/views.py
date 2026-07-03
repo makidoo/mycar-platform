@@ -20,6 +20,7 @@ from .models import (
     Paiement, StatutPaiement, OperateurPaiement, OTPVerification,
     ParametrePlateforme, DemandeTransfert, StatutTransfert,
     Plainte, StatutPlainte, NotificationLog, JournalAudit, CategorieAudit,
+    PermissionSpeciale, ActionPermission,
 )
 from .sms_service import sms_confirmation_paiement, sms_otp, sms_plainte_recue, sms_transfert_approuve
 import random
@@ -29,8 +30,20 @@ from .serializers import (
     UtilisateurUpdateSerializer, ParametrePlateformeSerializer,
     StatutVignetteSerializer, CodeSecuriteSerializer, HistoriqueConsultationSerializer,
     PaiementSerializer, DemandeTransfertSerializer, JournalAuditSerializer,
+    PermissionSpecialeSerializer,
 )
 from .permissions import AdminOnlyPermission, RoleBasedPermission
+
+
+def a_permission(user, action):
+    """
+    Retourne True si l'utilisateur peut effectuer l'action :
+    - L'administrateur système a tout par défaut.
+    - Sinon, vérifie une PermissionSpeciale accordée explicitement.
+    """
+    if user.role == RoleUtilisateur.ADMIN_SYS:
+        return True
+    return PermissionSpeciale.objects.filter(utilisateur=user, action=action).exists()
 
 
 def calculer_date_fin_vignette(annee_achat, duree_annees):
@@ -235,6 +248,61 @@ class HistoriqueConsultationViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ['-date_consultation']
 
 
+class PermissionSpecialeViewSet(viewsets.ModelViewSet):
+    """Gestion des permissions spéciales par utilisateur (Admin uniquement)."""
+    serializer_class   = PermissionSpecialeSerializer
+    permission_classes = [AdminOnlyPermission]
+
+    def get_queryset(self):
+        qs = PermissionSpeciale.objects.select_related('utilisateur', 'accordee_par').all()
+        utilisateur_id = self.request.query_params.get('utilisateur')
+        if utilisateur_id:
+            qs = qs.filter(utilisateur_id=utilisateur_id)
+        return qs
+
+    def perform_create(self, serializer):
+        ps = serializer.save(accordee_par=self.request.user)
+        log_audit(self.request, CategorieAudit.UTILISATEUR,
+                  f'Permission accordée : {ps.action}',
+                  objet_type='Utilisateur', objet_id=ps.utilisateur_id, objet_label=ps.utilisateur.email)
+
+    def perform_destroy(self, instance):
+        log_audit(self.request, CategorieAudit.UTILISATEUR,
+                  f'Permission révoquée : {instance.action}',
+                  objet_type='Utilisateur', objet_id=instance.utilisateur_id, objet_label=instance.utilisateur.email)
+        instance.delete()
+
+    @action(detail=False, methods=['get'])
+    def actions_disponibles(self, request):
+        from .models import ActionPermission
+        return Response([
+            {'value': choice[0], 'label': choice[1]}
+            for choice in ActionPermission.choices
+        ])
+
+    @action(detail=False, methods=['post'])
+    def sync_utilisateur(self, request):
+        """Remplace toutes les permissions d'un utilisateur par la liste fournie."""
+        utilisateur_id = request.data.get('utilisateur_id')
+        actions        = request.data.get('actions', [])
+        if not utilisateur_id:
+            return Response({'error': 'utilisateur_id requis.'}, status=400)
+        try:
+            u = Utilisateur.objects.get(id=utilisateur_id)
+        except Utilisateur.DoesNotExist:
+            return Response({'error': 'Utilisateur introuvable.'}, status=404)
+
+        PermissionSpeciale.objects.filter(utilisateur=u).delete()
+        for action_code in actions:
+            PermissionSpeciale.objects.create(
+                utilisateur=u, action=action_code, accordee_par=request.user
+            )
+        log_audit(request, CategorieAudit.UTILISATEUR,
+                  f'Permissions mises à jour ({len(actions)} action(s))',
+                  objet_type='Utilisateur', objet_id=u.id, objet_label=u.email)
+        return Response({'ok': True, 'nb_permissions': len(actions)})
+
+
 class JournalAuditViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = JournalAuditSerializer
     permission_classes = [IsAuthenticated]
@@ -392,8 +460,8 @@ def approuver_vehicule(request, automobile_id):
     Body: { "decision": "APPROUVE"|"REJETE"|"SUSPENDU", "notes": "..." }
     Lors de l'approbation, le statut vignette initial est automatiquement ROUGE.
     """
-    if request.user.role != RoleUtilisateur.ADMIN_SYS:
-        return Response({'error': 'Seul l\'administrateur système peut approuver les véhicules.'}, status=403)
+    if not a_permission(request.user, ActionPermission.APPROUVER_VEHICULE):
+        return Response({'error': 'Vous n\'avez pas la permission d\'approuver les véhicules.'}, status=403)
 
     decision = request.data.get('decision', '').strip().upper()
     notes    = request.data.get('notes', '').strip()
@@ -1030,8 +1098,8 @@ def agent_paiement_agence(request, automobile_id):
     Paiement en agence : l'agent règle la vignette pour le compte du contribuable.
     Pas d'OTP requis — l'agent est physiquement présent et authentifié.
     """
-    roles_autorises = {RoleUtilisateur.AGENT_DISTRIB, RoleUtilisateur.AGENT_DGI, RoleUtilisateur.ADMIN_SYS}
-    if request.user.role not in roles_autorises:
+    if not a_permission(request.user, ActionPermission.PAIEMENT_AGENCE) and \
+       request.user.role not in {RoleUtilisateur.AGENT_DISTRIB, RoleUtilisateur.AGENT_DGI}:
         return Response({'error': 'Accès non autorisé.'}, status=403)
 
     try:
@@ -1118,8 +1186,8 @@ def agent_attribuer_vignette(request, automobile_id):
     Attribution de la vignette physique à un véhicule (Agent de distribution).
     Conditions : véhicule APPROUVE + paiement CONFIRME + statut physique NON_ATTRIBUE.
     """
-    roles_autorises = {RoleUtilisateur.AGENT_DISTRIB, RoleUtilisateur.ADMIN_SYS}
-    if request.user.role not in roles_autorises:
+    if not a_permission(request.user, ActionPermission.ATTRIBUER_VIGNETTE) and \
+       request.user.role not in {RoleUtilisateur.AGENT_DISTRIB, RoleUtilisateur.AGENT_DGI}:
         return Response({'error': 'Accès non autorisé.'}, status=403)
 
     try:
@@ -1210,8 +1278,8 @@ class DemandeTransfertViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def traiter(self, request, pk=None):
         """Approuver ou rejeter un transfert (Admin système uniquement)."""
-        if request.user.role != RoleUtilisateur.ADMIN_SYS:
-            return Response({'error': 'Seul l\'administrateur système peut traiter les transferts.'}, status=403)
+        if not a_permission(request.user, ActionPermission.TRAITER_TRANSFERT):
+            return Response({'error': 'Vous n\'avez pas la permission de traiter les transferts.'}, status=403)
 
         demande = self.get_object()
         if demande.statut != StatutTransfert.EN_ATTENTE:

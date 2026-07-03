@@ -31,6 +31,41 @@
     </div>
   </div>
 
+  <!-- Permissions spéciales par utilisateur -->
+  <div class="col-12">
+    <div class="card p-4">
+      <div class="section-title"><i class="bi bi-person-lock me-2"></i>Permissions spéciales par utilisateur</div>
+      <p class="text-muted small mb-3">
+        Accordez à n'importe quel utilisateur des droits supplémentaires au-delà de son rôle.
+        L'administrateur système dispose de toutes les permissions par défaut.
+      </p>
+
+      <!-- Sélection utilisateur -->
+      <div class="row g-2 mb-3 align-items-end">
+        <div class="col-md-5">
+          <label class="form-label small fw-semibold">Choisir un utilisateur</label>
+          <select id="perm-select-user" class="form-select" onchange="chargerPermissionsUser()">
+            <option value="">— Sélectionner —</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <div id="perm-user-role" class="text-muted small"></div>
+        </div>
+      </div>
+
+      <!-- Grille des permissions -->
+      <div id="perm-grid" class="d-none">
+        <div class="row g-2 mb-3" id="perm-checkboxes"></div>
+        <button class="btn btn-primary-custom btn-sm px-4" onclick="sauvegarderPermissions()">
+          <i class="bi bi-shield-check me-2"></i>Enregistrer les permissions
+        </button>
+        <span id="perm-saved-msg" class="text-success small ms-3 d-none">
+          <i class="bi bi-check-circle me-1"></i>Enregistré
+        </span>
+      </div>
+    </div>
+  </div>
+
   <div class="col-12">
     <button class="btn btn-primary-custom px-5" onclick="sauvegarderParametres()">
       <i class="bi bi-save me-2"></i>Enregistrer tous les paramètres
@@ -210,5 +245,92 @@ async function sauvegarderParametres() {
 }
 
 loadParametres();
+
+// ── Permissions spéciales ──────────────────────────────────────
+
+const ROLE_LABELS_PERM = {
+  ADMINISTRATEUR_SYSTEME: 'Administrateur',
+  SUPERVISEUR_DGI:        'Superviseur DGI',
+  AGENT_DGI:              'Agent DGI',
+  AGENT_DISTRIBUTION:     'Agent de distribution',
+  POLICE:                 'Police',
+  CONTRIBUABLE:           'Contribuable',
+};
+
+let actionsDisponibles = [];
+let permissionsUser    = [];
+
+async function initPermissions() {
+  // Charger les actions disponibles
+  const acts = await Api.get('/permissions/actions_disponibles/');
+  actionsDisponibles = acts || [];
+
+  // Charger la liste des utilisateurs (non-admin)
+  const data = await Api.get('/admin/utilisateurs/?page_size=200');
+  const users = (data?.results || []).filter(u => u.role !== 'ADMINISTRATEUR_SYSTEME');
+  const sel = document.getElementById('perm-select-user');
+  users.forEach(u => {
+    const opt = document.createElement('option');
+    opt.value = u.id;
+    opt.textContent = `${u.nom} ${u.prenom} (${ROLE_LABELS_PERM[u.role] || u.role})`;
+    opt.dataset.role = u.role;
+    sel.appendChild(opt);
+  });
+}
+
+async function chargerPermissionsUser() {
+  const sel = document.getElementById('perm-select-user');
+  const uid = sel.value;
+  const grid = document.getElementById('perm-grid');
+
+  if (!uid) { grid.classList.add('d-none'); return; }
+
+  const opt = sel.options[sel.selectedIndex];
+  document.getElementById('perm-user-role').textContent =
+    `Rôle actuel : ${ROLE_LABELS_PERM[opt.dataset.role] || opt.dataset.role}`;
+
+  // Charger permissions existantes
+  const data = await Api.get(`/permissions/?utilisateur=${uid}`);
+  permissionsUser = (data?.results || data || []).map(p => p.action);
+
+  // Rendre les checkboxes
+  document.getElementById('perm-checkboxes').innerHTML = actionsDisponibles.map(a => `
+    <div class="col-md-6">
+      <div class="form-check p-3 rounded" style="background:#f8fafc;border:1px solid #e2e8f0;">
+        <input class="form-check-input" type="checkbox" id="perm-${a.value}" value="${a.value}"
+               ${permissionsUser.includes(a.value) ? 'checked' : ''}>
+        <label class="form-check-label small fw-semibold" for="perm-${a.value}">
+          ${a.label}
+        </label>
+      </div>
+    </div>`).join('');
+
+  document.getElementById('perm-saved-msg').classList.add('d-none');
+  grid.classList.remove('d-none');
+}
+
+async function sauvegarderPermissions() {
+  const uid = document.getElementById('perm-select-user').value;
+  if (!uid) return;
+
+  const actions = [...document.querySelectorAll('#perm-checkboxes input:checked')]
+    .map(cb => cb.value);
+
+  const result = await Api.post('/permissions/sync_utilisateur/', {
+    utilisateur_id: parseInt(uid),
+    actions,
+  });
+
+  if (result?.ok) {
+    document.getElementById('perm-saved-msg').classList.remove('d-none');
+    setTimeout(() => document.getElementById('perm-saved-msg').classList.add('d-none'), 3000);
+    showToast('Permissions mises à jour.');
+    permissionsUser = actions;
+  } else {
+    showToast('Erreur lors de la sauvegarde.', 'error');
+  }
+}
+
+initPermissions();
 </script>
 {% endblock %}

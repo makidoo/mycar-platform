@@ -2,7 +2,7 @@ from rest_framework import serializers
 from .models import (
     Region, Utilisateur, Automobile,
     StatutVignette, CodeSecurite, HistoriqueConsultation, Paiement,
-    ParametrePlateforme, DemandeTransfert, Plainte, JournalAudit,
+    ParametrePlateforme, DemandeTransfert, Plainte, JournalAudit, PermissionSpeciale,
 )
 
 
@@ -185,3 +185,17 @@ class JournalAuditSerializer(serializers.ModelSerializer):
             'action', 'detail', 'objet_type', 'objet_id', 'objet_label',
             'ip_address', 'date_action',
         ]
+
+
+class PermissionSpecialeSerializer(serializers.ModelSerializer):
+    utilisateur_email = serializers.CharField(source='utilisateur.email', read_only=True)
+    utilisateur_nom   = serializers.SerializerMethodField()
+    utilisateur_role  = serializers.CharField(source='utilisateur.role', read_only=True)
+
+    class Meta:
+        model  = PermissionSpeciale
+        fields = ['id', 'utilisateur', 'utilisateur_email', 'utilisateur_nom',
+                  'utilisateur_role', 'action', 'date_accord']
+
+    def get_utilisateur_nom(self, obj):
+        return f"{obj.utilisateur.nom} {obj.utilisateur.prenom}"
