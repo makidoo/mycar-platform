@@ -23,6 +23,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -100,6 +101,14 @@ STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [BASE_DIR / 'frontend' / 'static']
 
+# WhiteNoise sert les fichiers statiques directement depuis gunicorn (pas de nginx
+# requis) avec compression gzip/brotli et cache longue durée en un seul passage
+# de collectstatic.
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},
+}
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'core.Utilisateur'
@@ -110,7 +119,10 @@ MOCK_SERVICES = os.getenv('MOCK_SERVICES', 'True') == 'True'
 # Sécurité production (ignoré si DEBUG=True)
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER    = ('HTTP_X_FORWARDED_PROTO', 'https')
-    SECURE_SSL_REDIRECT        = True
+    # À désactiver (FORCE_HTTPS=False) si l'appli n'est pas derrière un proxy qui
+    # transmet X-Forwarded-Proto (ex: localtunnel en direct sur le port du conteneur) :
+    # sinon Django redirige systématiquement vers HTTPS → boucle de redirection infinie.
+    SECURE_SSL_REDIRECT        = os.getenv('FORCE_HTTPS', 'True') == 'True'
     SESSION_COOKIE_SECURE      = True
     CSRF_COOKIE_SECURE         = True
     SECURE_HSTS_SECONDS        = 31536000
