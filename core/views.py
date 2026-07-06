@@ -20,7 +20,6 @@ from .models import (
     Paiement, StatutPaiement, OperateurPaiement, OTPVerification,
     ParametrePlateforme, DemandeTransfert, StatutTransfert,
     Plainte, StatutPlainte, NotificationLog, JournalAudit, CategorieAudit,
-    PermissionSpeciale, ActionPermission,
 )
 from .sms_service import sms_confirmation_paiement, sms_otp, sms_plainte_recue, sms_transfert_approuve
 import random
@@ -30,20 +29,9 @@ from .serializers import (
     UtilisateurUpdateSerializer, ParametrePlateformeSerializer,
     StatutVignetteSerializer, CodeSecuriteSerializer, HistoriqueConsultationSerializer,
     PaiementSerializer, DemandeTransfertSerializer, JournalAuditSerializer,
-    PermissionSpecialeSerializer,
 )
 from .permissions import AdminOnlyPermission, RoleBasedPermission
 
-
-def a_permission(user, action):
-    """
-    Retourne True si l'utilisateur peut effectuer l'action :
-    - L'administrateur système a tout par défaut.
-    - Sinon, vérifie une PermissionSpeciale accordée explicitement.
-    """
-    if user.role == RoleUtilisateur.ADMIN_SYS:
-        return True
-    return PermissionSpeciale.objects.filter(utilisateur=user, action=action).exists()
 
 
 def calculer_date_fin_vignette(annee_achat, duree_annees):
@@ -248,60 +236,6 @@ class HistoriqueConsultationViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ['-date_consultation']
 
 
-class PermissionSpecialeViewSet(viewsets.ModelViewSet):
-    """Gestion des permissions spéciales par utilisateur (Admin uniquement)."""
-    serializer_class   = PermissionSpecialeSerializer
-    permission_classes = [AdminOnlyPermission]
-
-    def get_queryset(self):
-        qs = PermissionSpeciale.objects.select_related('utilisateur', 'accordee_par').all()
-        utilisateur_id = self.request.query_params.get('utilisateur')
-        if utilisateur_id:
-            qs = qs.filter(utilisateur_id=utilisateur_id)
-        return qs
-
-    def perform_create(self, serializer):
-        ps = serializer.save(accordee_par=self.request.user)
-        log_audit(self.request, CategorieAudit.UTILISATEUR,
-                  f'Permission accordée : {ps.action}',
-                  objet_type='Utilisateur', objet_id=ps.utilisateur_id, objet_label=ps.utilisateur.email)
-
-    def perform_destroy(self, instance):
-        log_audit(self.request, CategorieAudit.UTILISATEUR,
-                  f'Permission révoquée : {instance.action}',
-                  objet_type='Utilisateur', objet_id=instance.utilisateur_id, objet_label=instance.utilisateur.email)
-        instance.delete()
-
-    @action(detail=False, methods=['get'])
-    def actions_disponibles(self, request):
-        from .models import ActionPermission
-        return Response([
-            {'value': choice[0], 'label': choice[1]}
-            for choice in ActionPermission.choices
-        ])
-
-    @action(detail=False, methods=['post'])
-    def sync_utilisateur(self, request):
-        """Remplace toutes les permissions d'un utilisateur par la liste fournie."""
-        utilisateur_id = request.data.get('utilisateur_id')
-        actions        = request.data.get('actions', [])
-        if not utilisateur_id:
-            return Response({'error': 'utilisateur_id requis.'}, status=400)
-        try:
-            u = Utilisateur.objects.get(id=utilisateur_id)
-        except Utilisateur.DoesNotExist:
-            return Response({'error': 'Utilisateur introuvable.'}, status=404)
-
-        PermissionSpeciale.objects.filter(utilisateur=u).delete()
-        for action_code in actions:
-            PermissionSpeciale.objects.create(
-                utilisateur=u, action=action_code, accordee_par=request.user
-            )
-        log_audit(request, CategorieAudit.UTILISATEUR,
-                  f'Permissions mises à jour ({len(actions)} action(s))',
-                  objet_type='Utilisateur', objet_id=u.id, objet_label=u.email)
-        return Response({'ok': True, 'nb_permissions': len(actions)})
-
 
 class JournalAuditViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = JournalAuditSerializer
@@ -460,7 +394,7 @@ def approuver_vehicule(request, automobile_id):
     Body: { "decision": "APPROUVE"|"REJETE"|"SUSPENDU", "notes": "..." }
     Lors de l'approbation, le statut vignette initial est automatiquement ROUGE.
     """
-    if not a_permission(request.user, ActionPermission.APPROUVER_VEHICULE):
+    if request.user.role not in {RoleUtilisateur.ADMIN_SYS, RoleUtilisateur.SUP_DGI}:
         return Response({'error': 'Vous n\'avez pas la permission d\'approuver les véhicules.'}, status=403)
 
     decision = request.data.get('decision', '').strip().upper()
@@ -629,8 +563,9 @@ PARAMETRES_DEFAUT = [
     ('nom_organisation',   'DGI — République du Niger',                                       'Nom de l\'organisation'),
     ('devise',             'FCFA',                                                             'Devise utilisée pour les montants'),
     ('regle_validite_vignette', 'ANNEE_CIVILE',                                                 'Règle de validité : vignette valable jusqu\'au 31 décembre de l\'année d\'achat'),
-    ('taux_penalite_mensuel',  '5',                                                             'Taux de pénalité de retard par mois (en %)'),
-    ('otp_expiration_minutes', '10',                                                            'Durée de validité d\'un OTP (en minutes)'),
+    ('taux_penalite_mensuel',    '5',                                                           'Taux de pénalité de retard par mois (en %)'),
+    ('otp_expiration_minutes',  '10',                                                           'Durée de validité d\'un OTP (en minutes)'),
+    ('format_immatriculation',  r'[A-Z]{2}[0-9]{4}[A-Z]{2,5}',                                'Regex de validation du format de plaque (ex: AB1234NIA)'),
 ]
 
 class ParametrePlateformeViewSet(viewsets.ModelViewSet):
@@ -1098,8 +1033,7 @@ def agent_paiement_agence(request, automobile_id):
     Paiement en agence : l'agent règle la vignette pour le compte du contribuable.
     Pas d'OTP requis — l'agent est physiquement présent et authentifié.
     """
-    if not a_permission(request.user, ActionPermission.PAIEMENT_AGENCE) and \
-       request.user.role not in {RoleUtilisateur.AGENT_DISTRIB, RoleUtilisateur.AGENT_DGI}:
+    if request.user.role not in {RoleUtilisateur.AGENT_DISTRIB, RoleUtilisateur.AGENT_DGI}:
         return Response({'error': 'Accès non autorisé.'}, status=403)
 
     try:
@@ -1186,8 +1120,7 @@ def agent_attribuer_vignette(request, automobile_id):
     Attribution de la vignette physique à un véhicule (Agent de distribution).
     Conditions : véhicule APPROUVE + paiement CONFIRME + statut physique NON_ATTRIBUE.
     """
-    if not a_permission(request.user, ActionPermission.ATTRIBUER_VIGNETTE) and \
-       request.user.role not in {RoleUtilisateur.AGENT_DISTRIB, RoleUtilisateur.AGENT_DGI}:
+    if request.user.role not in {RoleUtilisateur.AGENT_DISTRIB, RoleUtilisateur.AGENT_DGI}:
         return Response({'error': 'Accès non autorisé.'}, status=403)
 
     try:
@@ -1278,7 +1211,7 @@ class DemandeTransfertViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def traiter(self, request, pk=None):
         """Approuver ou rejeter un transfert (Admin système uniquement)."""
-        if not a_permission(request.user, ActionPermission.TRAITER_TRANSFERT):
+        if request.user.role not in {RoleUtilisateur.ADMIN_SYS, RoleUtilisateur.SUP_DGI}:
             return Response({'error': 'Vous n\'avez pas la permission de traiter les transferts.'}, status=403)
 
         demande = self.get_object()
@@ -1621,3 +1554,271 @@ def log_inspection_gps(request):
         ip_address=request.META.get('REMOTE_ADDR'),
     )
     return Response({'ok': True})
+
+
+# =============== IMPORT DE DONNÉES ===============
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def import_vehicules_csv(request):
+    """
+    Importe des véhicules depuis un fichier CSV ou Excel uploadé.
+    Colonnes attendues : immatriculation, region, nom, prenom, telephone,
+                         type_vehicule, marque, modele, energie, puissance_cv,
+                         annee_fabrication, montant_taxe, numero_chassis
+    """
+    if request.user.role not in {RoleUtilisateur.ADMIN_SYS, RoleUtilisateur.SUP_DGI}:
+        return Response({'error': 'Accès réservé à l\'administrateur.'}, status=403)
+
+    fichier = request.FILES.get('fichier')
+    if not fichier:
+        return Response({'error': 'Aucun fichier fourni (champ : fichier).'}, status=400)
+
+    import openpyxl
+    import csv
+    import io as _io
+
+    nom = fichier.name.lower()
+    lignes = []
+
+    try:
+        if nom.endswith('.xlsx') or nom.endswith('.xls'):
+            wb = openpyxl.load_workbook(fichier, data_only=True)
+            ws = wb.active
+            entetes = [str(c.value).strip().lower() if c.value else '' for c in ws[1]]
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                if any(v is not None for v in row):
+                    lignes.append(dict(zip(entetes, [str(v).strip() if v is not None else '' for v in row])))
+        elif nom.endswith('.csv'):
+            content = fichier.read().decode('utf-8-sig')
+            reader = csv.DictReader(_io.StringIO(content))
+            for row in reader:
+                lignes.append({k.strip().lower(): v.strip() for k, v in row.items()})
+        else:
+            return Response({'error': 'Format non supporté. Utilisez .csv ou .xlsx.'}, status=400)
+    except Exception as e:
+        return Response({'error': f'Erreur de lecture du fichier : {e}'}, status=400)
+
+    crees = 0
+    ignores = 0
+    erreurs = []
+
+    for i, ligne in enumerate(lignes, start=2):
+        immat = ligne.get('immatriculation', '').upper()
+        region_nom = ligne.get('region', '').strip()
+        if not immat or not region_nom:
+            erreurs.append(f"Ligne {i} : immatriculation ou région manquante.")
+            continue
+
+        try:
+            region = Region.objects.get(nom_region__iexact=region_nom)
+        except Region.DoesNotExist:
+            # Essayer par code_region
+            try:
+                region = Region.objects.get(code_region__iexact=region_nom)
+            except Region.DoesNotExist:
+                erreurs.append(f"Ligne {i} : région '{region_nom}' introuvable.")
+                continue
+
+        if Automobile.objects.filter(immatriculation=immat, region=region).exists():
+            ignores += 1
+            continue
+
+        try:
+            Automobile.objects.create(
+                immatriculation=immat,
+                region=region,
+                nom=ligne.get('nom', ''),
+                prenom=ligne.get('prenom', ''),
+                telephone=ligne.get('telephone', ''),
+                type_vehicule=ligne.get('type_vehicule', 'VEHICULE').upper(),
+                marque=ligne.get('marque', ''),
+                modele=ligne.get('modele', ''),
+                energie=ligne.get('energie', '') or None,
+                puissance_cv=int(ligne.get('puissance_cv') or 0),
+                annee_fabrication=int(ligne.get('annee_fabrication') or 0) or None,
+                montant_taxe=float(ligne.get('montant_taxe') or 0),
+                numero_chassis=ligne.get('numero_chassis', f'IMP-{immat}'),
+                statut_approbation='EN_ATTENTE',
+            )
+            crees += 1
+        except Exception as e:
+            erreurs.append(f"Ligne {i} ({immat}) : {e}")
+
+    log_audit(request, CategorieAudit.VEHICULE,
+              f'Import CSV/Excel : {crees} créés, {ignores} ignorés, {len(erreurs)} erreurs',
+              objet_type='Import', objet_id='', objet_label=fichier.name)
+
+    return Response({
+        'ok': True,
+        'crees': crees,
+        'ignores': ignores,
+        'erreurs': erreurs[:20],  # max 20 erreurs remontées
+        'total_lignes': len(lignes),
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def tester_connexion_externe(request):
+    """
+    Teste une connexion à une base de données externe (PostgreSQL ou MySQL).
+    Body: { moteur, host, port, nom_bdd, utilisateur, mot_de_passe }
+    """
+    if request.user.role != RoleUtilisateur.ADMIN_SYS:
+        return Response({'error': 'Accès réservé à l\'administrateur système.'}, status=403)
+
+    moteur = request.data.get('moteur', 'postgresql').lower()
+    host   = request.data.get('host', '')
+    port   = request.data.get('port', 5432)
+    nom_bdd = request.data.get('nom_bdd', '')
+    user   = request.data.get('utilisateur', '')
+    pwd    = request.data.get('mot_de_passe', '')
+
+    if not all([host, nom_bdd, user]):
+        return Response({'error': 'Champs obligatoires : host, nom_bdd, utilisateur.'}, status=400)
+
+    try:
+        if moteur == 'postgresql':
+            import psycopg2
+            conn = psycopg2.connect(
+                host=host, port=int(port), dbname=nom_bdd,
+                user=user, password=pwd, connect_timeout=5,
+            )
+            cur = conn.cursor()
+            cur.execute("SELECT version();")
+            version = cur.fetchone()[0]
+            cur.close()
+            conn.close()
+            return Response({'ok': True, 'version': version, 'moteur': 'PostgreSQL'})
+
+        elif moteur == 'mysql':
+            import importlib
+            mysql = importlib.import_module('MySQLdb')
+            conn = mysql.connect(
+                host=host, port=int(port), db=nom_bdd,
+                user=user, passwd=pwd, connect_timeout=5,
+            )
+            cur = conn.cursor()
+            cur.execute("SELECT VERSION();")
+            version = cur.fetchone()[0]
+            cur.close()
+            conn.close()
+            return Response({'ok': True, 'version': version, 'moteur': 'MySQL'})
+
+        else:
+            return Response({'error': f'Moteur non supporté : {moteur}. Utilisez postgresql ou mysql.'}, status=400)
+
+    except Exception as e:
+        return Response({'ok': False, 'error': str(e)}, status=200)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def importer_depuis_externe(request):
+    """
+    Importe des véhicules depuis une base de données externe.
+    Body: { moteur, host, port, nom_bdd, utilisateur, mot_de_passe, requete_sql }
+    La requête SQL doit retourner les colonnes : immatriculation, region, nom, prenom,
+    telephone, type_vehicule, marque, modele, montant_taxe, numero_chassis
+    """
+    if request.user.role != RoleUtilisateur.ADMIN_SYS:
+        return Response({'error': 'Accès réservé à l\'administrateur système.'}, status=403)
+
+    moteur   = request.data.get('moteur', 'postgresql').lower()
+    host     = request.data.get('host', '')
+    port     = request.data.get('port', 5432)
+    nom_bdd  = request.data.get('nom_bdd', '')
+    user     = request.data.get('utilisateur', '')
+    pwd      = request.data.get('mot_de_passe', '')
+    sql      = request.data.get('requete_sql', '').strip()
+
+    if not sql:
+        return Response({'error': 'requete_sql est obligatoire.'}, status=400)
+
+    # Sécurité : on n'autorise que les SELECT
+    if not sql.upper().lstrip().startswith('SELECT'):
+        return Response({'error': 'Seules les requêtes SELECT sont autorisées.'}, status=400)
+
+    try:
+        if moteur == 'postgresql':
+            import psycopg2
+            conn = psycopg2.connect(
+                host=host, port=int(port), dbname=nom_bdd,
+                user=user, password=pwd, connect_timeout=5,
+            )
+        elif moteur == 'mysql':
+            import importlib
+            mysql = importlib.import_module('MySQLdb')
+            conn = mysql.connect(
+                host=host, port=int(port), db=nom_bdd,
+                user=user, passwd=pwd, connect_timeout=5,
+            )
+        else:
+            return Response({'error': f'Moteur non supporté : {moteur}.'}, status=400)
+
+        cur = conn.cursor()
+        cur.execute(sql)
+        colonnes = [d[0].lower() for d in cur.description]
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+    except Exception as e:
+        return Response({'ok': False, 'error': f'Erreur de connexion ou de requête : {e}'}, status=200)
+
+    crees = 0
+    ignores = 0
+    erreurs = []
+
+    for i, row in enumerate(rows, start=1):
+        ligne = dict(zip(colonnes, row))
+        immat = str(ligne.get('immatriculation', '')).upper().strip()
+        region_nom = str(ligne.get('region', '')).strip()
+
+        if not immat or not region_nom:
+            erreurs.append(f"Ligne {i} : immatriculation ou région manquante.")
+            continue
+
+        try:
+            region = Region.objects.get(nom_region__iexact=region_nom)
+        except Region.DoesNotExist:
+            try:
+                region = Region.objects.get(code_region__iexact=region_nom)
+            except Region.DoesNotExist:
+                erreurs.append(f"Ligne {i} : région '{region_nom}' introuvable.")
+                continue
+
+        if Automobile.objects.filter(immatriculation=immat, region=region).exists():
+            ignores += 1
+            continue
+
+        try:
+            Automobile.objects.create(
+                immatriculation=immat,
+                region=region,
+                nom=str(ligne.get('nom', '')),
+                prenom=str(ligne.get('prenom', '')),
+                telephone=str(ligne.get('telephone', '')),
+                type_vehicule=str(ligne.get('type_vehicule', 'VEHICULE')).upper(),
+                marque=str(ligne.get('marque', '')),
+                modele=str(ligne.get('modele', '')),
+                montant_taxe=float(ligne.get('montant_taxe') or 0),
+                numero_chassis=str(ligne.get('numero_chassis', f'EXT-{immat}')),
+                statut_approbation='EN_ATTENTE',
+            )
+            crees += 1
+        except Exception as e:
+            erreurs.append(f"Ligne {i} ({immat}) : {e}")
+
+    log_audit(request, CategorieAudit.VEHICULE,
+              f'Import base externe ({moteur}@{host}/{nom_bdd}) : {crees} créés, {ignores} ignorés',
+              objet_type='Import', objet_id='', objet_label=f'{host}/{nom_bdd}')
+
+    return Response({
+        'ok': True,
+        'crees': crees,
+        'ignores': ignores,
+        'erreurs': erreurs[:20],
+        'total_lignes': len(rows),
+    })

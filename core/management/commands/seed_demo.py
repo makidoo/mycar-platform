@@ -11,6 +11,17 @@ from core.views import PARAMETRES_DEFAUT
 
 REGIONS = ['Niamey', 'Zinder', 'Maradi', 'Tahoua', 'Agadez', 'Dosso', 'Tillabéri', 'Diffa']
 
+CODES_REGIONS = {
+    'Niamey':     'NIA',
+    'Zinder':     'ZIN',
+    'Maradi':     'MAR',
+    'Tahoua':     'TAH',
+    'Agadez':     'AGA',
+    'Dosso':      'DOS',
+    'Tillabéri':  'TIL',
+    'Diffa':      'DIF',
+}
+
 VEHICULES = [
     ('NIA-001-A', 'Mahamadou', 'Issoufou',   '70000001', 'VEHICULE', 'Toyota',      'Hilux',       'DIESEL',  120, 25000, 'Niamey',    'VERT',   0),
     ('NIA-002-B', 'Aminatou',  'Moussa',      '70000002', 'VEHICULE', 'Nissan',      'Patrol',      'DIESEL',  150, 30000, 'Niamey',    'VERT',   0),
@@ -59,7 +70,7 @@ class Command(BaseCommand):
         Region.objects.all().delete()
 
         # Régions
-        regions = {nom: Region.objects.create(nom_region=nom) for nom in REGIONS}
+        regions = {nom: Region.objects.create(nom_region=nom, code_region=CODES_REGIONS[nom]) for nom in REGIONS}
         self.stdout.write(f'  {len(regions)} régions créées')
 
         # Utilisateurs

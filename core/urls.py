@@ -6,7 +6,8 @@ from .views import (
     UtilisateurViewSet, RegionViewSet, AutomobileViewSet,
     StatutVignetteViewSet, CodeSecuriteViewSet, HistoriqueConsultationViewSet,
     AdminUtilisateurViewSet, ParametrePlateformeViewSet,
-    DemandeTransfertViewSet, PlainteViewSet, JournalAuditViewSet, PermissionSpecialeViewSet,
+    DemandeTransfertViewSet, PlainteViewSet, JournalAuditViewSet,
+    import_vehicules_csv, tester_connexion_externe, importer_depuis_externe,
     generer_code_securite, modifier_statut, approuver_vehicule,
     agent_rechercher_vehicule, agent_attribuer_vignette, agent_paiement_agence,
     certificat_vignette, export_excel,
@@ -28,7 +29,6 @@ router.register(r'admin/parametres',   ParametrePlateformeViewSet, basename='adm
 router.register(r'transferts',         DemandeTransfertViewSet,    basename='transfert')
 router.register(r'plaintes',           PlainteViewSet,             basename='plainte')
 router.register(r'journal-audit',      JournalAuditViewSet,        basename='journal-audit')
-router.register(r'permissions',        PermissionSpecialeViewSet,  basename='permission')
 
 urlpatterns = [
     path('auth/login/', MyCarTokenObtainPairView.as_view(), name='token_obtain_pair'),
@@ -52,5 +52,8 @@ urlpatterns = [
     path('public/paiement/initier/',                      public_initier_paiement,   name='public_initier_paiement'),
     path('public/paiement/<str:reference>/confirmer/',    public_confirmer_paiement, name='public_confirmer_paiement'),
     path('police/inspection/',                            log_inspection_gps,        name='log_inspection_gps'),
+    path('import/csv/',                                   import_vehicules_csv,       name='import_vehicules_csv'),
+    path('import/tester-connexion/',                      tester_connexion_externe,   name='tester_connexion_externe'),
+    path('import/depuis-externe/',                        importer_depuis_externe,    name='importer_depuis_externe'),
     path('', include(router.urls)),
 ]

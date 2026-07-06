@@ -31,37 +31,152 @@
     </div>
   </div>
 
-  <!-- Permissions spéciales par utilisateur -->
+  <!-- Format d'immatriculation -->
   <div class="col-12">
     <div class="card p-4">
-      <div class="section-title"><i class="bi bi-person-lock me-2"></i>Permissions spéciales par utilisateur</div>
+      <div class="section-title"><i class="bi bi-car-front me-2"></i>Format des plaques d'immatriculation</div>
       <p class="text-muted small mb-3">
-        Accordez à n'importe quel utilisateur des droits supplémentaires au-delà de son rôle.
-        L'administrateur système dispose de toutes les permissions par défaut.
+        Définissez l'expression régulière (regex) correspondant au format attendu. Exemple pour
+        <code>AB1234NIA</code> : <code>[A-Z]{2}[0-9]{4}[A-Z]{2,5}</code>
+      </p>
+      <div class="row g-3 align-items-end" id="section-format-immat">
+        <!-- rempli par JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Gestion des régions -->
+  <div class="col-12">
+    <div class="card p-4">
+      <div class="section-title"><i class="bi bi-map me-2"></i>Régions</div>
+      <p class="text-muted small mb-3">
+        Gérez les régions du Niger. Le <strong>code</strong> est utilisé dans la plaque
+        d'immatriculation (ex. : NIA pour Niamey).
       </p>
 
-      <!-- Sélection utilisateur -->
-      <div class="row g-2 mb-3 align-items-end">
-        <div class="col-md-5">
-          <label class="form-label small fw-semibold">Choisir un utilisateur</label>
-          <select id="perm-select-user" class="form-select" onchange="chargerPermissionsUser()">
-            <option value="">— Sélectionner —</option>
-          </select>
-        </div>
-        <div class="col-md-3">
-          <div id="perm-user-role" class="text-muted small"></div>
-        </div>
+      <div class="table-responsive mb-3">
+        <table class="table table-sm align-middle" id="regions-table">
+          <thead class="table-light">
+            <tr>
+              <th>Région</th>
+              <th>Code</th>
+              <th style="width:120px"></th>
+            </tr>
+          </thead>
+          <tbody id="regions-body">
+            <tr><td colspan="3" class="text-center text-muted py-3">Chargement…</td></tr>
+          </tbody>
+        </table>
       </div>
 
-      <!-- Grille des permissions -->
-      <div id="perm-grid" class="d-none">
-        <div class="row g-2 mb-3" id="perm-checkboxes"></div>
-        <button class="btn btn-primary-custom btn-sm px-4" onclick="sauvegarderPermissions()">
-          <i class="bi bi-shield-check me-2"></i>Enregistrer les permissions
-        </button>
-        <span id="perm-saved-msg" class="text-success small ms-3 d-none">
-          <i class="bi bi-check-circle me-1"></i>Enregistré
-        </span>
+      <!-- Formulaire ajout / modification -->
+      <div class="row g-2 align-items-end" id="region-form">
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold">Nom de la région</label>
+          <input type="text" id="region-nom" class="form-control" placeholder="ex. Niamey">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small fw-semibold">Code (2-5 lettres)</label>
+          <input type="text" id="region-code" class="form-control" placeholder="ex. NIA" maxlength="5">
+        </div>
+        <div class="col-auto">
+          <input type="hidden" id="region-edit-id" value="">
+          <button class="btn btn-primary-custom" onclick="sauvegarderRegion()">
+            <i class="bi bi-plus-circle me-1"></i><span id="region-btn-label">Ajouter</span>
+          </button>
+          <button class="btn btn-outline-secondary ms-1 d-none" id="region-cancel-btn" onclick="annulerEditionRegion()">
+            Annuler
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Import de données -->
+  <div class="col-12">
+    <div class="card p-4">
+      <div class="section-title"><i class="bi bi-cloud-upload me-2"></i>Import de données</div>
+
+      <!-- Onglets -->
+      <ul class="nav nav-tabs mb-3" id="import-tabs">
+        <li class="nav-item">
+          <a class="nav-link active" href="#" onclick="switchImport('csv',this)">
+            <i class="bi bi-file-earmark-spreadsheet me-1"></i>Fichier CSV / Excel
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="#" onclick="switchImport('ext',this)">
+            <i class="bi bi-database me-1"></i>Base de données externe
+          </a>
+        </li>
+      </ul>
+
+      <!-- Panneau CSV -->
+      <div id="import-csv-panel">
+        <p class="small text-muted mb-2">
+          Colonnes attendues : <code>immatriculation, region, nom, prenom, telephone,
+          type_vehicule, marque, modele, energie, puissance_cv, annee_fabrication,
+          montant_taxe, numero_chassis</code>
+        </p>
+        <div class="row g-2 align-items-end">
+          <div class="col-md-6">
+            <label class="form-label small fw-semibold">Fichier (.csv ou .xlsx)</label>
+            <input type="file" id="import-fichier" class="form-control" accept=".csv,.xlsx,.xls">
+          </div>
+          <div class="col-auto">
+            <button class="btn btn-primary-custom" onclick="importerCSV()">
+              <i class="bi bi-upload me-1"></i>Importer
+            </button>
+          </div>
+        </div>
+        <div id="import-csv-result" class="mt-3"></div>
+      </div>
+
+      <!-- Panneau base externe -->
+      <div id="import-ext-panel" class="d-none">
+        <div class="row g-3 mb-3">
+          <div class="col-md-3">
+            <label class="form-label small fw-semibold">Moteur</label>
+            <select id="ext-moteur" class="form-select">
+              <option value="postgresql">PostgreSQL</option>
+              <option value="mysql">MySQL</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small fw-semibold">Hôte</label>
+            <input type="text" id="ext-host" class="form-control" placeholder="192.168.1.10">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small fw-semibold">Port</label>
+            <input type="number" id="ext-port" class="form-control" value="5432">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small fw-semibold">Nom de la base</label>
+            <input type="text" id="ext-bdd" class="form-control" placeholder="nom_base">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small fw-semibold">Utilisateur</label>
+            <input type="text" id="ext-user" class="form-control" placeholder="postgres">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small fw-semibold">Mot de passe</label>
+            <input type="password" id="ext-pwd" class="form-control">
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-semibold">Requête SQL (SELECT uniquement)</label>
+            <textarea id="ext-sql" class="form-control font-monospace" rows="3"
+              placeholder="SELECT immatriculation, region, nom, prenom, telephone, type_vehicule, marque, modele, montant_taxe, numero_chassis FROM vehicules"></textarea>
+          </div>
+        </div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-outline-primary" onclick="testerConnexion()">
+            <i class="bi bi-plug me-1"></i>Tester la connexion
+          </button>
+          <button class="btn btn-primary-custom" onclick="importerDepuisExterne()">
+            <i class="bi bi-database-add me-1"></i>Importer
+          </button>
+        </div>
+        <div id="import-ext-result" class="mt-3"></div>
       </div>
     </div>
   </div>
@@ -77,9 +192,10 @@
 {% block scripts %}
 <script>
 const PARAM_GROUPS = {
-  identite: ['nom_plateforme', 'nom_organisation', 'devise'],
-  roles:    ['dashboard_roles', 'vehicules_roles', 'saisie_roles', 'verification_roles'],
-  tech:     ['regle_validite_vignette', 'taux_penalite_mensuel', 'otp_expiration_minutes'],
+  identite:    ['nom_plateforme', 'nom_organisation', 'devise'],
+  roles:       ['dashboard_roles', 'vehicules_roles', 'saisie_roles', 'verification_roles'],
+  tech:        ['regle_validite_vignette', 'taux_penalite_mensuel', 'otp_expiration_minutes'],
+  formatImmat: ['format_immatriculation'],
 };
 
 const ROLE_OPTIONS = [
@@ -107,6 +223,7 @@ function renderAll() {
   renderSection('identite', PARAM_GROUPS.identite, 'text');
   renderRolesSection();
   renderTechSection();
+  renderSection('format-immat', PARAM_GROUPS.formatImmat, 'text');
 }
 
 function renderSection(sectionId, cles, inputType) {
@@ -246,91 +363,159 @@ async function sauvegarderParametres() {
 
 loadParametres();
 
-// ── Permissions spéciales ──────────────────────────────────────
+// ── Régions ─────────────────────────────────────────────────────
 
-const ROLE_LABELS_PERM = {
-  ADMINISTRATEUR_SYSTEME: 'Administrateur',
-  SUPERVISEUR_DGI:        'Superviseur DGI',
-  AGENT_DGI:              'Agent DGI',
-  AGENT_DISTRIBUTION:     'Agent de distribution',
-  POLICE:                 'Police',
-  CONTRIBUABLE:           'Contribuable',
-};
+let regions = [];
 
-let actionsDisponibles = [];
-let permissionsUser    = [];
-
-async function initPermissions() {
-  // Charger les actions disponibles
-  const acts = await Api.get('/permissions/actions_disponibles/');
-  actionsDisponibles = acts || [];
-
-  // Charger la liste des utilisateurs (non-admin)
-  const data = await Api.get('/admin/utilisateurs/?page_size=200');
-  const users = (data?.results || []).filter(u => u.role !== 'ADMINISTRATEUR_SYSTEME');
-  const sel = document.getElementById('perm-select-user');
-  users.forEach(u => {
-    const opt = document.createElement('option');
-    opt.value = u.id;
-    opt.textContent = `${u.nom} ${u.prenom} (${ROLE_LABELS_PERM[u.role] || u.role})`;
-    opt.dataset.role = u.role;
-    sel.appendChild(opt);
-  });
+async function chargerRegions() {
+  const data = await Api.get('/regions/?page_size=100');
+  regions = data?.results || data || [];
+  renderRegions();
 }
 
-async function chargerPermissionsUser() {
-  const sel = document.getElementById('perm-select-user');
-  const uid = sel.value;
-  const grid = document.getElementById('perm-grid');
-
-  if (!uid) { grid.classList.add('d-none'); return; }
-
-  const opt = sel.options[sel.selectedIndex];
-  document.getElementById('perm-user-role').textContent =
-    `Rôle actuel : ${ROLE_LABELS_PERM[opt.dataset.role] || opt.dataset.role}`;
-
-  // Charger permissions existantes
-  const data = await Api.get(`/permissions/?utilisateur=${uid}`);
-  permissionsUser = (data?.results || data || []).map(p => p.action);
-
-  // Rendre les checkboxes
-  document.getElementById('perm-checkboxes').innerHTML = actionsDisponibles.map(a => `
-    <div class="col-md-6">
-      <div class="form-check p-3 rounded" style="background:#f8fafc;border:1px solid #e2e8f0;">
-        <input class="form-check-input" type="checkbox" id="perm-${a.value}" value="${a.value}"
-               ${permissionsUser.includes(a.value) ? 'checked' : ''}>
-        <label class="form-check-label small fw-semibold" for="perm-${a.value}">
-          ${a.label}
-        </label>
-      </div>
-    </div>`).join('');
-
-  document.getElementById('perm-saved-msg').classList.add('d-none');
-  grid.classList.remove('d-none');
+function renderRegions() {
+  const body = document.getElementById('regions-body');
+  if (!regions.length) {
+    body.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">Aucune région.</td></tr>';
+    return;
+  }
+  body.innerHTML = regions.map(r => `
+    <tr>
+      <td>${r.nom_region}</td>
+      <td><code>${r.code_region || '—'}</code></td>
+      <td class="text-end">
+        <button class="btn btn-sm btn-outline-secondary" onclick="editerRegion(${r.id})">
+          <i class="bi bi-pencil"></i>
+        </button>
+        <button class="btn btn-sm btn-outline-danger ms-1" onclick="supprimerRegion(${r.id})">
+          <i class="bi bi-trash"></i>
+        </button>
+      </td>
+    </tr>`).join('');
 }
 
-async function sauvegarderPermissions() {
-  const uid = document.getElementById('perm-select-user').value;
-  if (!uid) return;
+function editerRegion(id) {
+  const r = regions.find(x => x.id === id);
+  if (!r) return;
+  document.getElementById('region-nom').value = r.nom_region;
+  document.getElementById('region-code').value = r.code_region || '';
+  document.getElementById('region-edit-id').value = r.id;
+  document.getElementById('region-btn-label').textContent = 'Modifier';
+  document.getElementById('region-cancel-btn').classList.remove('d-none');
+}
 
-  const actions = [...document.querySelectorAll('#perm-checkboxes input:checked')]
-    .map(cb => cb.value);
+function annulerEditionRegion() {
+  document.getElementById('region-nom').value = '';
+  document.getElementById('region-code').value = '';
+  document.getElementById('region-edit-id').value = '';
+  document.getElementById('region-btn-label').textContent = 'Ajouter';
+  document.getElementById('region-cancel-btn').classList.add('d-none');
+}
 
-  const result = await Api.post('/permissions/sync_utilisateur/', {
-    utilisateur_id: parseInt(uid),
-    actions,
-  });
+async function sauvegarderRegion() {
+  const nom  = document.getElementById('region-nom').value.trim();
+  const code = document.getElementById('region-code').value.trim().toUpperCase();
+  const id   = document.getElementById('region-edit-id').value;
+
+  if (!nom || !code) {
+    showToast('Le nom et le code de la région sont obligatoires.', 'error');
+    return;
+  }
+
+  const payload = { nom_region: nom, code_region: code };
+  const result = id
+    ? await Api.put(`/regions/${id}/`, payload)
+    : await Api.post('/regions/', payload);
 
   if (result?.ok) {
-    document.getElementById('perm-saved-msg').classList.remove('d-none');
-    setTimeout(() => document.getElementById('perm-saved-msg').classList.add('d-none'), 3000);
-    showToast('Permissions mises à jour.');
-    permissionsUser = actions;
+    showToast(id ? 'Région modifiée.' : 'Région ajoutée.');
+    annulerEditionRegion();
+    chargerRegions();
   } else {
-    showToast('Erreur lors de la sauvegarde.', 'error');
+    showToast('Erreur lors de l’enregistrement de la région.', 'error');
   }
 }
 
-initPermissions();
+async function supprimerRegion(id) {
+  if (!confirm('Supprimer cette région ?')) return;
+  const ok = await Api.delete(`/regions/${id}/`);
+  if (ok) {
+    showToast('Région supprimée.');
+    chargerRegions();
+  } else {
+    showToast('Erreur lors de la suppression.', 'error');
+  }
+}
+
+chargerRegions();
+
+// ── Import de données ──────────────────────────────────────────
+
+function switchImport(tab, el) {
+  document.querySelectorAll('#import-tabs .nav-link').forEach(a => a.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('import-csv-panel').classList.toggle('d-none', tab !== 'csv');
+  document.getElementById('import-ext-panel').classList.toggle('d-none', tab !== 'ext');
+}
+
+function renderImportResult(containerId, data) {
+  const el = document.getElementById(containerId);
+  if (!data) {
+    el.innerHTML = '<div class="alert alert-danger">Impossible de contacter le serveur.</div>';
+    return;
+  }
+  if (data.error) {
+    el.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+    return;
+  }
+  const erreurs = (data.erreurs || []).map(e => `<li>${e}</li>`).join('');
+  el.innerHTML = `
+    <div class="alert alert-success">
+      ${data.crees ?? 0} créé(s), ${data.ignores ?? 0} ignoré(s)${data.total_lignes != null ? ` sur ${data.total_lignes} ligne(s)` : ''}.
+    </div>
+    ${erreurs ? `<div class="alert alert-warning"><strong>Erreurs :</strong><ul class="mb-0">${erreurs}</ul></div>` : ''}`;
+}
+
+async function importerCSV() {
+  const input = document.getElementById('import-fichier');
+  const fichier = input.files[0];
+  if (!fichier) {
+    showToast('Sélectionnez un fichier à importer.', 'error');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('fichier', fichier);
+
+  const res = await fetch(`${API_BASE}/import/csv/`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${Api.getToken()}` },
+    body: formData,
+  });
+  const data = await res.json().catch(() => null);
+  renderImportResult('import-csv-result', data);
+}
+
+function lireFormExterne() {
+  return {
+    moteur: document.getElementById('ext-moteur').value,
+    host: document.getElementById('ext-host').value.trim(),
+    port: document.getElementById('ext-port').value,
+    nom_bdd: document.getElementById('ext-bdd').value.trim(),
+    utilisateur: document.getElementById('ext-user').value.trim(),
+    mot_de_passe: document.getElementById('ext-pwd').value,
+  };
+}
+
+async function testerConnexion() {
+  const result = await Api.post('/import/tester-connexion/', lireFormExterne());
+  renderImportResult('import-ext-result', result?.data);
+}
+
+async function importerDepuisExterne() {
+  const payload = { ...lireFormExterne(), requete_sql: document.getElementById('ext-sql').value.trim() };
+  const result = await Api.post('/import/depuis-externe/', payload);
+  renderImportResult('import-ext-result', result?.data);
+}
 </script>
 {% endblock %}

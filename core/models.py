@@ -65,10 +65,11 @@ class UtilisateurManager(BaseUserManager):
 
 
 class Region(models.Model):
-    nom_region = models.CharField(max_length=50, unique=True)
+    nom_region  = models.CharField(max_length=50, unique=True)
+    code_region = models.CharField(max_length=5, unique=True, blank=True, default='')
 
     def __str__(self):
-        return self.nom_region
+        return f"{self.nom_region} ({self.code_region})" if self.code_region else self.nom_region
 
 
 class Utilisateur(AbstractBaseUser):
@@ -343,29 +344,6 @@ class NotificationLog(models.Model):
     def __str__(self):
         return f"[{self.canal}] {self.destinataire} — {self.contexte} ({self.statut})"
 
-
-class ActionPermission(models.TextChoices):
-    APPROUVER_VEHICULE  = 'APPROUVER_VEHICULE',  'Approuver / Rejeter des véhicules'
-    TRAITER_TRANSFERT   = 'TRAITER_TRANSFERT',   'Traiter les transferts de propriété'
-    ATTRIBUER_VIGNETTE  = 'ATTRIBUER_VIGNETTE',  'Attribuer les vignettes physiques'
-    PAIEMENT_AGENCE     = 'PAIEMENT_AGENCE',     'Effectuer des paiements en agence'
-    TRAITER_PLAINTES    = 'TRAITER_PLAINTES',     'Traiter les plaintes & litiges'
-    VOIR_RAPPORTS       = 'VOIR_RAPPORTS',        'Accéder aux rapports'
-    VOIR_JOURNAL_AUDIT  = 'VOIR_JOURNAL_AUDIT',   'Consulter le journal d\'audit'
-    GERER_UTILISATEURS  = 'GERER_UTILISATEURS',  'Gérer les comptes utilisateurs'
-
-
-class PermissionSpeciale(models.Model):
-    utilisateur  = models.ForeignKey(Utilisateur, on_delete=models.CASCADE, related_name='permissions_speciales')
-    action       = models.CharField(max_length=50, choices=ActionPermission.choices)
-    accordee_par = models.ForeignKey(Utilisateur, null=True, on_delete=models.SET_NULL, related_name='permissions_accordees')
-    date_accord  = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        unique_together = ['utilisateur', 'action']
-
-    def __str__(self):
-        return f"{self.utilisateur.email} — {self.action}"
 
 
 class HistoriqueConsultation(models.Model):

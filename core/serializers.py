@@ -2,14 +2,14 @@ from rest_framework import serializers
 from .models import (
     Region, Utilisateur, Automobile,
     StatutVignette, CodeSecurite, HistoriqueConsultation, Paiement,
-    ParametrePlateforme, DemandeTransfert, Plainte, JournalAudit, PermissionSpeciale,
+    ParametrePlateforme, DemandeTransfert, Plainte, JournalAudit,
 )
 
 
 class RegionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Region
-        fields = ['id', 'nom_region']
+        fields = ['id', 'nom_region', 'code_region']
 
 
 class UtilisateurSerializer(serializers.ModelSerializer):
@@ -97,6 +97,20 @@ class AutomobileWriteSerializer(serializers.ModelSerializer):
             'annee_fabrication', 'montant_taxe', 'numero_chassis',
             'date_mise_circulation', 'date_edition_carte_grise',
         ]
+
+    def validate_immatriculation(self, value):
+        import re
+        from .models import ParametrePlateforme
+        value = value.strip().upper()
+        try:
+            fmt = ParametrePlateforme.objects.get(cle='format_immatriculation').valeur.strip()
+        except ParametrePlateforme.DoesNotExist:
+            return value
+        if fmt and not re.fullmatch(fmt, value):
+            raise serializers.ValidationError(
+                f"Format d'immatriculation invalide. Attendu : {fmt}"
+            )
+        return value
 
 
 class CodeSecuriteSerializer(serializers.ModelSerializer):
@@ -187,15 +201,3 @@ class JournalAuditSerializer(serializers.ModelSerializer):
         ]
 
 
-class PermissionSpecialeSerializer(serializers.ModelSerializer):
-    utilisateur_email = serializers.CharField(source='utilisateur.email', read_only=True)
-    utilisateur_nom   = serializers.SerializerMethodField()
-    utilisateur_role  = serializers.CharField(source='utilisateur.role', read_only=True)
-
-    class Meta:
-        model  = PermissionSpeciale
-        fields = ['id', 'utilisateur', 'utilisateur_email', 'utilisateur_nom',
-                  'utilisateur_role', 'action', 'date_accord']
-
-    def get_utilisateur_nom(self, obj):
-        return f"{obj.utilisateur.nom} {obj.utilisateur.prenom}"
