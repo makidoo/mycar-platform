@@ -332,7 +332,7 @@ async function loadFinancier() {
   document.getElementById('kpi-top-region-val').textContent = topR ? `${Number(topR.recettes).toLocaleString('fr-FR')} FCFA` : '';
 
   const topOp = data.par_operateur[0];
-  const opLabels = { NITA:'NITA', AMANATA:'Amanata', ORANGE_MONEY:'ZamaniCash', AIRTEL_MONEY:'Airtel Money' };
+  const opLabels = { NITA:'NITA', AMANATA:'Amanata', ORANGE_MONEY:'ZamaniCash', AIRTEL_MONEY:'Airtel Money', CARTE_BANCAIRE:'Carte bancaire' };
   document.getElementById('kpi-top-op').textContent     = topOp ? (opLabels[topOp.operateur] || topOp.operateur) : '—';
   document.getElementById('kpi-top-op-val').textContent = topOp ? `${Number(topOp.recettes).toLocaleString('fr-FR')} FCFA` : '';
 

@@ -277,13 +277,13 @@ async function loadPaiements() {
     el.innerHTML = '<div class="text-muted small text-center py-2">Aucun paiement enregistré.</div>';
     return;
   }
-  const opLabels = { NITA:'NITA', AMANATA:'Amanata', ORANGE_MONEY:'ZamaniCash', AIRTEL_MONEY:'Airtel Money' };
+  const opLabels = { NITA:'NITA', AMANATA:'Amanata', ORANGE_MONEY:'ZamaniCash', AIRTEL_MONEY:'Airtel Money', CARTE_BANCAIRE:'Carte bancaire' };
   el.innerHTML = '<div class="d-flex flex-column gap-2">' +
     list.map(p => `
       <div class="d-flex align-items-center gap-3 p-2 rounded" style="background:#f8fafc;">
         <div class="flex-fill">
           <div class="small fw-semibold font-monospace">${p.reference}</div>
-          <div class="text-muted" style="font-size:.73rem;">${opLabels[p.operateur]||p.operateur} — ${p.telephone}</div>
+          <div class="text-muted" style="font-size:.73rem;">${opLabels[p.operateur]||p.operateur} — ${p.telephone || p.carte_numero_masque || '—'}</div>
           <div class="text-muted" style="font-size:.73rem;">${p.date_confirmation ? new Date(p.date_confirmation).toLocaleDateString('fr-FR') : new Date(p.date_initiation).toLocaleDateString('fr-FR')}</div>
         </div>
         <div class="text-end">

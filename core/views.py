@@ -11,6 +11,7 @@ import qrcode
 import json
 import base64
 import io
+import re
 from datetime import timedelta
 
 from .models import (
@@ -690,7 +691,13 @@ def public_verifier_otp(request):
 @api_view(['POST'])
 @permission_classes([])
 def public_initier_paiement(request):
-    """Initie un paiement mobile money (simulation). Requiert un session_token valide."""
+    """
+    Initie un paiement (simulation). Requiert un session_token valide.
+    Deux moyens de paiement possibles :
+    - Mobile money (NITA, AMANATA, ORANGE_MONEY, AIRTEL_MONEY) : nécessite `telephone`.
+    - Carte bancaire (CARTE_BANCAIRE) : nécessite `carte_numero` et `carte_expiration`.
+      Le numéro de carte n'est jamais stocké : seule sa version masquée l'est.
+    """
     session_token = request.data.get('session_token', '').strip()
     operateur     = request.data.get('operateur')
     telephone     = request.data.get('telephone', '').strip()
@@ -699,11 +706,29 @@ def public_initier_paiement(request):
     if duree_annees not in [1, 2, 3]:
         return Response({'error': 'duree_annees doit être 1, 2 ou 3.'}, status=400)
 
-    if not all([session_token, operateur, telephone]):
-        return Response({'error': 'Champs requis : session_token, operateur, telephone.'}, status=400)
+    if not all([session_token, operateur]):
+        return Response({'error': 'Champs requis : session_token, operateur.'}, status=400)
 
     if operateur not in OperateurPaiement.values:
-        return Response({'error': f'Opérateur invalide.'}, status=400)
+        return Response({'error': 'Opérateur invalide.'}, status=400)
+
+    carte_numero_masque = ''
+    carte_expiration    = ''
+
+    if operateur == OperateurPaiement.CARTE:
+        carte_numero     = re.sub(r'\D', '', request.data.get('carte_numero', ''))
+        carte_expiration = request.data.get('carte_expiration', '').strip()
+
+        if len(carte_numero) < 12 or len(carte_numero) > 19:
+            return Response({'error': 'Numéro de carte invalide.'}, status=400)
+        if not re.fullmatch(r'(0[1-9]|1[0-2])/\d{2}', carte_expiration):
+            return Response({'error': 'Date d\'expiration invalide (format MM/AA).'}, status=400)
+
+        carte_numero_masque = f"**** **** **** {carte_numero[-4:]}"
+        # carte_numero n'est jamais réutilisé ni stocké au-delà de cette validation.
+    else:
+        if not telephone:
+            return Response({'error': 'Champ requis : telephone.'}, status=400)
 
     try:
         otp = OTPVerification.objects.select_related('automobile').get(
@@ -754,6 +779,8 @@ def public_initier_paiement(request):
         duree_annees=duree_annees,
         operateur=operateur,
         telephone=telephone,
+        carte_numero_masque=carte_numero_masque,
+        carte_expiration=carte_expiration,
     )
 
     return Response({
@@ -766,8 +793,10 @@ def public_initier_paiement(request):
         'date_fin':          date_fin.isoformat(),
         'operateur':         paiement.operateur,
         'telephone':         paiement.telephone,
+        'carte_numero_masque': paiement.carte_numero_masque,
         'statut':            paiement.statut,
-        'message':           'Demande envoyée. Confirmez sur votre téléphone.',
+        'message':           'Demande envoyée. Confirmez sur votre téléphone.' if operateur != OperateurPaiement.CARTE
+                             else 'Demande envoyée. Traitement du paiement par carte en cours…',
     }, status=201)
 
 

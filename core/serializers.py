@@ -151,7 +151,7 @@ class PaiementSerializer(serializers.ModelSerializer):
         model = Paiement
         fields = [
             'id', 'reference', 'automobile', 'montant', 'operateur',
-            'telephone', 'statut', 'date_initiation', 'date_confirmation',
+            'telephone', 'carte_numero_masque', 'statut', 'date_initiation', 'date_confirmation',
         ]
         read_only_fields = ['reference', 'statut', 'date_initiation', 'date_confirmation']
 

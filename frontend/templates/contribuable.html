@@ -335,15 +335,39 @@
             <div class="op-label">Airtel Niger</div>
           </div>
         </div>
+        <div class="col-12">
+          <div class="operator-btn" onclick="selectOperator('CARTE_BANCAIRE', this)">
+            <div class="op-logo">💳</div>
+            <div class="op-name">Carte bancaire</div>
+            <div class="op-label">Visa / Mastercard</div>
+          </div>
+        </div>
       </div>
 
-      <div class="mb-4">
+      <div class="mb-4" id="bloc-mobile-money">
         <label class="form-label fw-semibold">Numéro Mobile Money <span class="text-danger">*</span></label>
         <div class="input-group">
           <span class="input-group-text fw-bold">+227</span>
           <input type="tel" id="input-telephone" class="form-control form-control-lg" placeholder="90 00 00 00" maxlength="12">
         </div>
         <div class="form-text">Le débit sera effectué sur ce numéro.</div>
+      </div>
+
+      <div class="mb-4 d-none" id="bloc-carte">
+        <label class="form-label fw-semibold">Numéro de carte <span class="text-danger">*</span></label>
+        <input type="text" id="input-carte-numero" class="form-control form-control-lg mb-2"
+               placeholder="0000 0000 0000 0000" maxlength="19" inputmode="numeric">
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label small fw-semibold">Expiration (MM/AA) <span class="text-danger">*</span></label>
+            <input type="text" id="input-carte-expiration" class="form-control" placeholder="12/28" maxlength="5">
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold">CVV <span class="text-danger">*</span></label>
+            <input type="text" id="input-carte-cvv" class="form-control" placeholder="123" maxlength="4" inputmode="numeric">
+          </div>
+        </div>
+        <div class="form-text">Paiement simulé — aucune donnée de carte n'est conservée.</div>
       </div>
 
       <!-- Détail pénalité si applicable -->
@@ -721,26 +745,48 @@ function afficherVehicule() {
 }
 
 // ── Opérateur ─────────────────────────────────────────────────
+const opLabels = { NITA:'NITA', AMANATA:'Amanata', ORANGE_MONEY:'ZamaniCash', AIRTEL_MONEY:'Airtel Money', CARTE_BANCAIRE:'Carte bancaire' };
+
 function selectOperator(code, el) {
   document.querySelectorAll('.operator-btn').forEach(b => b.classList.remove('selected'));
   el.classList.add('selected');
   selectedOperator = code;
+  document.getElementById('bloc-mobile-money').classList.toggle('d-none', code === 'CARTE_BANCAIRE');
+  document.getElementById('bloc-carte').classList.toggle('d-none', code !== 'CARTE_BANCAIRE');
 }
 
 // ── Étape 4 → 5 : Paiement ───────────────────────────────────
 async function initierPaiement() {
   const errEl = document.getElementById('pay-error');
-  const tel   = document.getElementById('input-telephone').value.trim();
-
-  if (!selectedOperator) { errEl.textContent = 'Veuillez choisir un opérateur.'; errEl.classList.remove('d-none'); return; }
-  if (!tel) { errEl.textContent = 'Veuillez saisir votre numéro Mobile Money.'; errEl.classList.remove('d-none'); return; }
-
   errEl.classList.add('d-none');
+
+  if (!selectedOperator) { errEl.textContent = 'Veuillez choisir un moyen de paiement.'; errEl.classList.remove('d-none'); return; }
+
+  const payload = { session_token: sessionToken, operateur: selectedOperator, duree_annees: dureeAnnees };
+  let tel = '';
+
+  if (selectedOperator === 'CARTE_BANCAIRE') {
+    const carteNumero     = document.getElementById('input-carte-numero').value.replace(/\D/g, '');
+    const carteExpiration = document.getElementById('input-carte-expiration').value.trim();
+    const carteCvv        = document.getElementById('input-carte-cvv').value.trim();
+
+    if (carteNumero.length < 12 || !carteExpiration || carteCvv.length < 3) {
+      errEl.textContent = 'Veuillez renseigner les informations de la carte.';
+      errEl.classList.remove('d-none');
+      return;
+    }
+    payload.carte_numero     = carteNumero;
+    payload.carte_expiration = carteExpiration;
+  } else {
+    tel = document.getElementById('input-telephone').value.trim();
+    if (!tel) { errEl.textContent = 'Veuillez saisir votre numéro Mobile Money.'; errEl.classList.remove('d-none'); return; }
+    payload.telephone = `+227${tel}`;
+  }
 
   const r = await fetch(`${API}/public/paiement/initier/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session_token: sessionToken, operateur: selectedOperator, telephone: `+227${tel}`, duree_annees: dureeAnnees }),
+    body: JSON.stringify(payload),
   });
 
   if (!r.ok) {
@@ -761,10 +807,10 @@ async function initierPaiement() {
     document.getElementById('recap-montant-penalite').textContent = `${Number(data.montant_penalite).toLocaleString('fr-FR')} FCFA`;
     document.getElementById('recap-montant').textContent = `${Number(data.montant).toLocaleString('fr-FR')} FCFA`;
   }
-  const opLabels = { NITA:'NITA', AMANATA:'Amanata', ORANGE_MONEY:'ZamaniCash', AIRTEL_MONEY:'Airtel Money' };
   document.getElementById('ref-display').textContent = currentRef;
-  document.getElementById('processing-msg').textContent =
-    `Confirmez le paiement sur votre téléphone ${tel} (${opLabels[selectedOperator]}).`;
+  document.getElementById('processing-msg').textContent = selectedOperator === 'CARTE_BANCAIRE'
+    ? 'Traitement de votre paiement par carte bancaire…'
+    : `Confirmez le paiement sur votre téléphone ${tel} (${opLabels[selectedOperator]}).`;
   document.getElementById('progress-bar').style.width = '0%';
 
   goStep(5);
@@ -798,7 +844,6 @@ function simulerConfirmation() {
 }
 
 function afficherSucces(data) {
-  const opLabels = { NITA:'NITA', AMANATA:'Amanata', ORANGE_MONEY:'ZamaniCash', AIRTEL_MONEY:'Airtel Money' };
   document.getElementById('success-ref').textContent     = data.reference;
   document.getElementById('success-op').textContent      = opLabels[data.operateur] || data.operateur;
   document.getElementById('success-montant').textContent = `${Number(data.montant).toLocaleString('fr-FR')} FCFA`;

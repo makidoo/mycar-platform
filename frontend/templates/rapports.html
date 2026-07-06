@@ -366,7 +366,7 @@ function afficherRapportRegion(fin, annee) {
 // ── Rapport par opérateur ─────────────────────────────────────
 function afficherRapportOperateur(fin, annee) {
   const ops = fin.par_operateur || [];
-  const opLabels = { NITA: 'NITA', AMANATA: 'Amanata', ORANGE_MONEY: 'ZamaniCash', AIRTEL_MONEY: 'Airtel Money' };
+  const opLabels = { NITA: 'NITA', AMANATA: 'Amanata', ORANGE_MONEY: 'ZamaniCash', AIRTEL_MONEY: 'Airtel Money', CARTE_BANCAIRE: 'Carte bancaire' };
   const total = ops.reduce((s, o) => s + (o.recettes || 0), 0);
 
   document.getElementById('rapport-zone').innerHTML = `

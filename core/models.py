@@ -77,6 +77,8 @@ class Utilisateur(AbstractBaseUser):
     role = models.CharField(max_length=50, choices=RoleUtilisateur.choices)
     nom = models.CharField(max_length=100)
     prenom = models.CharField(max_length=100)
+    # Identifiant libre de l'agence partenaire (AGENT_DISTRIB) ou du bureau DGI (AGENT_DGI)
+    # de rattachement. Pas de FK : aucun modèle Agence/Structure n'existe encore.
     structure_id = models.IntegerField(null=True, blank=True)
     region = models.ForeignKey(
         'Region', null=True, blank=True,
@@ -229,6 +231,7 @@ class OperateurPaiement(models.TextChoices):
     AMANATA     = 'AMANATA',      'Amanata'
     ORANGE      = 'ORANGE_MONEY', 'ZamaniCash'
     AIRTEL      = 'AIRTEL_MONEY', 'Airtel Money'
+    CARTE       = 'CARTE_BANCAIRE', 'Carte bancaire'
 
 
 class StatutPaiement(models.TextChoices):
@@ -243,7 +246,11 @@ class Paiement(models.Model):
     otp               = models.OneToOneField('OTPVerification', null=True, blank=True, on_delete=models.SET_NULL, related_name='paiement')
     montant           = models.DecimalField(max_digits=10, decimal_places=2)
     operateur         = models.CharField(max_length=20, choices=OperateurPaiement.choices)
-    telephone         = models.CharField(max_length=20)
+    telephone         = models.CharField(max_length=20, blank=True, default='')
+    # Renseignés uniquement pour un paiement par carte bancaire (simulation) — le numéro complet
+    # n'est jamais stocké, seule sa version masquée l'est.
+    carte_numero_masque = models.CharField(max_length=19, blank=True, default='')
+    carte_expiration    = models.CharField(max_length=5, blank=True, default='')
     statut            = models.CharField(max_length=20, choices=StatutPaiement.choices, default=StatutPaiement.EN_ATTENTE)
     duree_annees      = models.IntegerField(default=1)
     date_initiation   = models.DateTimeField(auto_now_add=True)
