@@ -33,6 +33,9 @@ services:
       DB_PASSWORD:   ${DB_PASSWORD}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS}
       MOCK_SERVICES: "False"
+      # False si l'appli est exposée directement (ex: localtunnel sur le port 8000)
+      # sans proxy transmettant X-Forwarded-Proto — sinon boucle de redirection HTTPS.
+      FORCE_HTTPS:   ${FORCE_HTTPS:-True}
     volumes:
       - static_files:/app/staticfiles
     ports:
