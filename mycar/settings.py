@@ -61,6 +61,8 @@ DATABASES = {
         'PASSWORD': os.getenv('DB_PASSWORD', 'localpass123'),
         'HOST': os.getenv('DB_HOST', 'localhost'),
         'PORT': os.getenv('DB_PORT', '5432'),
+        # Réutilise la connexion entre requêtes au lieu d'en rouvrir une à chaque fois.
+        'CONN_MAX_AGE': 60,
     }
 }
 
