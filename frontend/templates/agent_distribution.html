@@ -178,14 +178,25 @@ function afficherResultat(v) {
     { ok: v.statut_physique !== 'ATTRIBUE',    label: 'Vignette physique disponible pour attribution (pas déjà remise)' },
   ];
 
-  document.getElementById('conditions-panel').innerHTML = `
-    <div class="list-group list-group-flush small">
-      ${conditions.map(c => `
-        <div class="list-group-item px-0 py-1 d-flex align-items-center gap-2">
-          <i class="bi ${c.ok ? 'bi-check-circle-fill text-success' : 'bi-x-circle-fill text-danger'}"></i>
-          ${c.label}
-        </div>`).join('')}
-    </div>`;
+  // Une fois la vignette déjà attribuée, la checklist "conditions pour attribuer"
+  // n'a plus lieu d'être : on affiche une confirmation cohérente avec le badge
+  // ATTRIBUÉ plutôt qu'un item rouge qui contredirait visuellement ce badge.
+  if (v.statut_physique === 'ATTRIBUE') {
+    document.getElementById('conditions-panel').innerHTML = `
+      <div class="d-flex align-items-center gap-2 text-success small">
+        <i class="bi bi-check-circle-fill"></i>
+        Vignette physique déjà attribuée à ce véhicule.
+      </div>`;
+  } else {
+    document.getElementById('conditions-panel').innerHTML = `
+      <div class="list-group list-group-flush small">
+        ${conditions.map(c => `
+          <div class="list-group-item px-0 py-1 d-flex align-items-center gap-2">
+            <i class="bi ${c.ok ? 'bi-check-circle-fill text-success' : 'bi-x-circle-fill text-danger'}"></i>
+            ${c.label}
+          </div>`).join('')}
+      </div>`;
+  }
 
   // Paiement en agence si non payé mais approuvé
   const panelPaiement = document.getElementById('panel-paiement');
