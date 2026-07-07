@@ -68,6 +68,9 @@ class Region(models.Model):
     nom_region  = models.CharField(max_length=50, unique=True)
     code_region = models.CharField(max_length=5, unique=True, blank=True, default='')
 
+    class Meta:
+        ordering = ['nom_region']
+
     def __str__(self):
         return f"{self.nom_region} ({self.code_region})" if self.code_region else self.nom_region
 
@@ -130,6 +133,7 @@ class Automobile(models.Model):
 
     class Meta:
         unique_together = [['immatriculation', 'region']]
+        ordering = ['-date_creation']
 
     def __str__(self):
         return f"{self.immatriculation} - {self.nom} {self.prenom}"
