@@ -175,7 +175,7 @@ function afficherResultat(v) {
   const conditions = [
     { ok: v.statut_approbation === 'APPROUVE', label: 'Véhicule approuvé par l\'administrateur' },
     { ok: v.paiement_confirme,                 label: 'Paiement confirmé dans le système' },
-    { ok: v.statut_physique !== 'ATTRIBUE',    label: 'Vignette physique pas encore attribuée' },
+    { ok: v.statut_physique !== 'ATTRIBUE',    label: 'Vignette physique disponible pour attribution (pas déjà remise)' },
   ];
 
   document.getElementById('conditions-panel').innerHTML = `
