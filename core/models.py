@@ -118,6 +118,8 @@ class Automobile(models.Model):
     numero_chassis = models.CharField(max_length=50, unique=True)
     date_mise_circulation = models.DateField(null=True)
     date_edition_carte_grise = models.DateField(null=True)
+    # Photo de la carte grise, requise avant que l'administrateur puisse approuver le véhicule.
+    carte_grise_image = models.ImageField(upload_to='cartes_grises/', null=True, blank=True)
     # Workflow d'approbation (Pending → Approved/Rejected/Suspended)
     statut_approbation = models.CharField(
         max_length=20,

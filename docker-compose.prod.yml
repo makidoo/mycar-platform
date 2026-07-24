@@ -38,6 +38,7 @@ services:
       FORCE_HTTPS:   ${FORCE_HTTPS:-True}
     volumes:
       - static_files:/app/staticfiles
+      - media_files:/app/media
     ports:
       - "8000:8000"
     depends_on:
@@ -77,6 +78,7 @@ services:
 volumes:
   postgres_data:
   static_files:
+  media_files:
   certbot_www:
   certbot_conf:
 

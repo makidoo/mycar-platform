@@ -1,6 +1,8 @@
 from django.contrib import admin
-from django.urls import path, include
+from django.conf import settings
+from django.urls import path, include, re_path
 from django.views.generic import TemplateView
+from django.views.static import serve as serve_media
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 urlpatterns = [
@@ -25,4 +27,9 @@ urlpatterns = [
     path('plaintes/',     TemplateView.as_view(template_name='plaintes.html'),           name='plaintes'),
     path('rapports/',      TemplateView.as_view(template_name='rapports.html'),       name='rapports'),
     path('journal-audit/', TemplateView.as_view(template_name='journal_audit.html'), name='journal_audit'),
+    path('simulateur/',    TemplateView.as_view(template_name='simulateur.html'),    name='simulateur'),
+
+    # Fichiers médias (photos de carte grise, etc.) — pas de nginx devant l'app,
+    # donc Django sert lui-même ce volume, sans être limité au mode DEBUG.
+    re_path(r'^media/(?P<path>.*)$', serve_media, {'document_root': settings.MEDIA_ROOT}),
 ]

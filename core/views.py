@@ -213,6 +213,21 @@ class AutomobileViewSet(viewsets.ModelViewSet):
         serializer = PaiementSerializer(paiements, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['post'], url_path='carte-grise')
+    def carte_grise(self, request, pk=None):
+        """Joint la photo de la carte grise, requise avant approbation du véhicule."""
+        automobile = self.get_object()
+        image = request.FILES.get('image')
+        if not image:
+            return Response({'error': 'Aucune image fournie (champ : image).'}, status=400)
+
+        automobile.carte_grise_image = image
+        automobile.save(update_fields=['carte_grise_image'])
+        log_audit(request, CategorieAudit.VEHICULE,
+                  'Photo de la carte grise jointe',
+                  objet_type='Automobile', objet_id=automobile.id, objet_label=automobile.immatriculation)
+        return Response(AutomobileReadSerializer(automobile).data)
+
 
 class StatutVignetteViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = StatutVignette.objects.select_related('automobile', 'operateur').all()
@@ -408,6 +423,9 @@ def approuver_vehicule(request, automobile_id):
         auto = Automobile.objects.get(id=automobile_id)
     except Automobile.DoesNotExist:
         return Response({'error': 'Véhicule introuvable.'}, status=404)
+
+    if decision == StatutApprobationVehicule.APPROUVE and not auto.carte_grise_image:
+        return Response({'error': 'La photo de la carte grise doit être jointe avant l\'approbation.'}, status=400)
 
     auto.statut_approbation = decision
     auto.notes_approbation  = notes

@@ -82,7 +82,7 @@ class AutomobileReadSerializer(serializers.ModelSerializer):
             'id', 'immatriculation', 'pays', 'region', 'nom', 'prenom', 'telephone',
             'type_vehicule', 'marque', 'modele', 'energie', 'puissance_cv',
             'annee_fabrication', 'montant_taxe', 'numero_chassis',
-            'date_mise_circulation', 'date_edition_carte_grise',
+            'date_mise_circulation', 'date_edition_carte_grise', 'carte_grise_image',
             'statut_approbation', 'notes_approbation',
             'statut_actuel', 'date_creation',
         ]

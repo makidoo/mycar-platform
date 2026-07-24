@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Simulateur de dates{% endblock %}
+{% block page_title %}<i class="bi bi-calendar3 me-2"></i>Simulateur de dates — Statut vignette{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+
+  <div class="col-12">
+    <div class="alert alert-info py-2 small mb-0">
+      <i class="bi bi-info-circle me-1"></i>
+      Outil de simulation uniquement — aucune donnée réelle n'est modifiée. Il applique la règle
+      officielle : vignette <strong>VERTE</strong> jusqu'au 31 décembre de l'année d'achat,
+      <strong>ORANGE</strong> l'année suivante (avec pénalité mensuelle), <strong>ROUGE</strong> ensuite.
+    </div>
+  </div>
+
+  <!-- Paramètres de la vignette simulée -->
+  <div class="col-lg-5">
+    <div class="card p-4">
+      <div class="section-title"><i class="bi bi-sliders me-2"></i>Vignette simulée</div>
+
+      <div class="row g-3">
+        <div class="col-6">
+          <label class="form-label small fw-semibold">Année d'achat</label>
+          <input type="number" id="sim-annee-achat" class="form-control" value="2026" min="2000" max="2100">
+        </div>
+        <div class="col-6">
+          <label class="form-label small fw-semibold">Durée</label>
+          <select id="sim-duree" class="form-select">
+            <option value="1">1 an</option>
+            <option value="2">2 ans</option>
+            <option value="3">3 ans</option>
+          </select>
+        </div>
+        <div class="col-6">
+          <label class="form-label small fw-semibold">Montant taxe (FCFA)</label>
+          <input type="number" id="sim-montant" class="form-control" value="20000" min="0">
+        </div>
+        <div class="col-6">
+          <label class="form-label small fw-semibold">Pénalité mensuelle (%)</label>
+          <input type="number" id="sim-taux" class="form-control" value="5" min="0" max="100">
+          <div class="form-text" id="taux-source">Valeur par défaut</div>
+        </div>
+      </div>
+
+      <hr>
+
+      <div class="small text-muted mb-2">Dates clés calculées :</div>
+      <div class="list-group list-group-flush small" id="dates-cles"></div>
+    </div>
+  </div>
+
+  <!-- Date simulée + résultat -->
+  <div class="col-lg-7">
+    <div class="card p-4 mb-3">
+      <div class="section-title"><i class="bi bi-calendar-event me-2"></i>Date simulée</div>
+
+      <input type="date" id="sim-date" class="form-control form-control-lg mb-3">
+
+      <div class="d-flex flex-wrap gap-2 mb-2">
+        <button class="btn btn-sm btn-outline-secondary" onclick="jumpTo('achat')">Année d'achat</button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="jumpTo('fin_vert')">Fin VERT</button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="jumpTo('debut_orange')">Début ORANGE</button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="jumpTo('milieu_orange')">Milieu ORANGE</button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="jumpTo('debut_rouge')">Début ROUGE</button>
+        <button class="btn btn-sm btn-outline-primary" onclick="jumpTo('aujourdhui')">Aujourd'hui</button>
+      </div>
+
+      <input type="range" id="sim-slider" class="form-range" min="0" max="1460" step="1">
+      <div class="form-text">Glisser pour avancer/reculer jour par jour (± 2 ans autour de l'achat).</div>
+    </div>
+
+    <div class="card p-4" id="resultat-card">
+      <div class="section-title">Résultat de la simulation</div>
+      <div id="resultat-badge" class="mb-3"></div>
+      <div id="resultat-detail"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function dateISO(d) { return d.toISOString().slice(0, 10); }
+function finValidite(anneeAchat, duree) { return new Date(Date.UTC(anneeAchat + duree - 1, 11, 31)); }
+function joursDepuis(base, jours) {
+  const d = new Date(base.getTime());
+  d.setUTCDate(d.getUTCDate() + jours);
+  return d;
+}
+function formatDateFr(d) {
+  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
+let anneeBase, dureeBase, dateBaseSlider;
+
+function recalculerDatesCles() {
+  const anneeAchat = parseInt(document.getElementById('sim-annee-achat').value) || 2026;
+  const duree      = parseInt(document.getElementById('sim-duree').value) || 1;
+  const fin        = finValidite(anneeAchat, duree);
+  const debutOrange   = new Date(Date.UTC(fin.getUTCFullYear() + 1, 0, 1));
+  const debutRouge     = new Date(Date.UTC(fin.getUTCFullYear() + 2, 0, 1));
+  const milieuOrange   = new Date(Date.UTC(fin.getUTCFullYear() + 1, 6, 1));
+
+  document.getElementById('dates-cles').innerHTML = `
+    <div class="list-group-item px-0 py-1 d-flex justify-content-between">
+      <span>Achat</span><strong>${anneeAchat}</strong>
+    </div>
+    <div class="list-group-item px-0 py-1 d-flex justify-content-between">
+      <span>Valide (VERT) jusqu'au</span><strong class="text-success">${formatDateFr(fin)}</strong>
+    </div>
+    <div class="list-group-item px-0 py-1 d-flex justify-content-between">
+      <span>Passage ORANGE le</span><strong class="text-warning">${formatDateFr(debutOrange)}</strong>
+    </div>
+    <div class="list-group-item px-0 py-1 d-flex justify-content-between">
+      <span>Passage ROUGE le</span><strong class="text-danger">${formatDateFr(debutRouge)}</strong>
+    </div>`;
+
+  return { anneeAchat, duree, fin, debutOrange, milieuOrange, debutRouge };
+}
+
+function jumpTo(cible) {
+  const { anneeAchat, fin, debutOrange, milieuOrange, debutRouge } = recalculerDatesCles();
+  let d;
+  if (cible === 'achat')          d = new Date(Date.UTC(anneeAchat, 0, 1));
+  else if (cible === 'fin_vert')      d = fin;
+  else if (cible === 'debut_orange')  d = debutOrange;
+  else if (cible === 'milieu_orange') d = milieuOrange;
+  else if (cible === 'debut_rouge')   d = debutRouge;
+  else d = new Date();
+  document.getElementById('sim-date').value = dateISO(d);
+  mettreAJourSlider(d);
+  simuler();
+}
+
+function mettreAJourSlider(d) {
+  const anneeAchat = parseInt(document.getElementById('sim-annee-achat').value) || 2026;
+  const base = new Date(Date.UTC(anneeAchat - 1, 0, 1));
+  const diffJours = Math.round((d.getTime() - base.getTime()) / 86400000);
+  document.getElementById('sim-slider').value = Math.min(1460, Math.max(0, diffJours));
+}
+
+function simuler() {
+  const { fin, debutOrange, debutRouge } = recalculerDatesCles();
+  const dateStr = document.getElementById('sim-date').value;
+  if (!dateStr) return;
+  const d = new Date(dateStr + 'T00:00:00Z');
+
+  const montant = parseFloat(document.getElementById('sim-montant').value) || 0;
+  const taux    = parseFloat(document.getElementById('sim-taux').value) || 0;
+
+  const badgeEl  = document.getElementById('resultat-badge');
+  const detailEl = document.getElementById('resultat-detail');
+
+  if (d <= fin) {
+    badgeEl.innerHTML = '<span class="badge badge-vert fs-6 px-3 py-2"><i class="bi bi-check-circle-fill me-1"></i>VERT</span>';
+    detailEl.innerHTML = `<p class="text-muted mb-0">Vignette valide. Aucune action requise avant le ${formatDateFr(fin)}.</p>`;
+  } else if (d.getUTCFullYear() === debutOrange.getUTCFullYear()) {
+    const nbMois = (d.getUTCFullYear() - debutOrange.getUTCFullYear()) * 12 + (d.getUTCMonth() - debutOrange.getUTCMonth());
+    const moisEcoules = Math.max(0, nbMois);
+    const tauxPct = moisEcoules * taux;
+    const penalite = montant * tauxPct / 100;
+    badgeEl.innerHTML = '<span class="badge badge-orange fs-6 px-3 py-2"><i class="bi bi-exclamation-circle-fill me-1"></i>ORANGE</span>';
+    detailEl.innerHTML = `
+      <div class="d-flex justify-content-between small mb-1">
+        <span class="text-muted">Mois de retard</span><strong>${moisEcoules}</strong>
+      </div>
+      <div class="d-flex justify-content-between small mb-1">
+        <span class="text-muted">Pénalité (${moisEcoules} × ${taux}%)</span><strong>${tauxPct}%</strong>
+      </div>
+      <div class="d-flex justify-content-between small mb-1">
+        <span class="text-muted">Montant pénalité</span><strong>${penalite.toLocaleString('fr-FR')} FCFA</strong>
+      </div>
+      <hr class="my-1">
+      <div class="d-flex justify-content-between fw-bold">
+        <span>Total à payer</span><span class="text-primary">${(montant + penalite).toLocaleString('fr-FR')} FCFA</span>
+      </div>`;
+  } else {
+    badgeEl.innerHTML = '<span class="badge badge-rouge fs-6 px-3 py-2"><i class="bi bi-x-circle-fill me-1"></i>ROUGE</span>';
+    detailEl.innerHTML = `<p class="text-muted mb-0">Vignette expirée depuis ${d.getUTCFullYear() - debutRouge.getUTCFullYear() + 1} an(s) sans renouvellement. Renouvellement en ligne non disponible — présentation à la DGI requise.</p>`;
+  }
+}
+
+async function chargerTauxReel() {
+  try {
+    const data = await Api.get('/admin/parametres/?page_size=100');
+    const p = (data?.results || []).find(x => x.cle === 'taux_penalite_mensuel');
+    if (p) {
+      document.getElementById('sim-taux').value = p.valeur;
+      document.getElementById('taux-source').textContent = 'Valeur réelle configurée dans Paramètres';
+    }
+  } catch { /* garde la valeur par défaut si non accessible */ }
+}
+
+document.getElementById('sim-annee-achat').addEventListener('input', () => { recalculerDatesCles(); simuler(); });
+document.getElementById('sim-duree').addEventListener('change', () => { recalculerDatesCles(); simuler(); });
+document.getElementById('sim-montant').addEventListener('input', simuler);
+document.getElementById('sim-taux').addEventListener('input', simuler);
+document.getElementById('sim-date').addEventListener('input', (e) => {
+  mettreAJourSlider(new Date(e.target.value + 'T00:00:00Z'));
+  simuler();
+});
+document.getElementById('sim-slider').addEventListener('input', (e) => {
+  const anneeAchat = parseInt(document.getElementById('sim-annee-achat').value) || 2026;
+  const base = new Date(Date.UTC(anneeAchat - 1, 0, 1));
+  const d = joursDepuis(base, parseInt(e.target.value));
+  document.getElementById('sim-date').value = dateISO(d);
+  simuler();
+});
+
+recalculerDatesCles();
+jumpTo('aujourdhui');
+chargerTauxReel();
+</script>
+{% endblock %}

@@ -203,22 +203,25 @@ async function loadVehicle() {
         ${Api.getUser()?.role === 'ADMINISTRATEUR_SYSTEME' && auto.statut_approbation === 'EN_ATTENTE' ? `
         <div class="card p-3 mb-3" style="border:2px solid #f59e0b;">
           <div class="section-title text-warning"><i class="bi bi-exclamation-triangle me-2"></i>En attente d'approbation</div>
-          <p class="small text-muted mb-3">Ce véhicule doit être approuvé avant que le propriétaire puisse payer sa vignette.</p>
+          <p class="small text-muted mb-3">La photo de la carte grise doit être jointe avant de pouvoir approuver ce véhicule.</p>
+
+          ${auto.carte_grise_image ? `
+            <div class="mb-2">
+              <img src="${auto.carte_grise_image}" alt="Carte grise" class="img-fluid rounded border" style="max-height:200px;">
+            </div>
+          ` : ''}
+
           <div class="mb-3">
-            <label class="form-label small">Notes (optionnel)</label>
-            <textarea id="notes-approbation" class="form-control form-control-sm" rows="2" placeholder="Motif de refus ou remarque…"></textarea>
-          </div>
-          <div class="d-flex gap-2">
-            <button class="btn btn-success btn-sm flex-fill" onclick="deciderApprobation('APPROUVE')">
-              <i class="bi bi-check-circle me-1"></i>Approuver
-            </button>
-            <button class="btn btn-danger btn-sm flex-fill" onclick="deciderApprobation('REJETE')">
-              <i class="bi bi-x-circle me-1"></i>Rejeter
-            </button>
-            <button class="btn btn-secondary btn-sm" onclick="deciderApprobation('SUSPENDU')">
-              <i class="bi bi-pause-circle me-1"></i>Suspendre
+            <label class="form-label small">${auto.carte_grise_image ? 'Remplacer la photo de la carte grise' : 'Photo de la carte grise'}</label>
+            <input type="file" id="input-carte-grise" class="form-control form-control-sm" accept="image/*">
+            <button class="btn btn-outline-primary btn-sm w-100 mt-2" onclick="joindreCarteGrise()">
+              <i class="bi bi-upload me-1"></i>Joindre l'image
             </button>
           </div>
+
+          <button class="btn btn-success btn-sm w-100" onclick="deciderApprobation('APPROUVE')" ${auto.carte_grise_image ? '' : 'disabled'}>
+            <i class="bi bi-check-circle me-1"></i>Approuver
+          </button>
           <div id="appro-alert" class="alert d-none py-2 small mt-2"></div>
         </div>` : ''}
 
@@ -255,15 +258,45 @@ function infoRow(label, value) {
 }
 
 async function deciderApprobation(decision) {
-  const notes  = document.getElementById('notes-approbation')?.value.trim() || '';
   const alertEl = document.getElementById('appro-alert');
-  const result = await Api.post(`/automobiles/${vehicleId}/approuver/`, { decision, notes });
+  const result = await Api.post(`/automobiles/${vehicleId}/approuver/`, { decision, notes: '' });
   if (result?.ok) {
     showToast(`Véhicule ${decision.toLowerCase()} avec succès.`);
     loadVehicle();
   } else {
     alertEl.className = 'alert alert-danger py-2 small mt-2';
     alertEl.textContent = result?.data?.error || 'Erreur lors de l\'approbation.';
+    alertEl.classList.remove('d-none');
+  }
+}
+
+async function joindreCarteGrise() {
+  const input = document.getElementById('input-carte-grise');
+  const alertEl = document.getElementById('appro-alert');
+  const fichier = input?.files[0];
+  if (!fichier) {
+    alertEl.className = 'alert alert-danger py-2 small mt-2';
+    alertEl.textContent = 'Sélectionnez une image avant de la joindre.';
+    alertEl.classList.remove('d-none');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('image', fichier);
+
+  const res = await fetch(`${API_BASE}/automobiles/${vehicleId}/carte-grise/`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${Api.getToken()}` },
+    body: formData,
+  });
+
+  if (res.ok) {
+    showToast('Photo de la carte grise jointe.');
+    loadVehicle();
+  } else {
+    const err = await res.json().catch(() => null);
+    alertEl.className = 'alert alert-danger py-2 small mt-2';
+    alertEl.textContent = err?.error || 'Erreur lors de l\'envoi de l\'image.';
     alertEl.classList.remove('d-none');
   }
 }
