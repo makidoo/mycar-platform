@@ -186,6 +186,13 @@ async function loadVehicle() {
             ${infoRow('Carte grise', formatDate(auto.date_edition_carte_grise))}
             ${infoRow('Taxe annuelle', `<strong>${Number(auto.montant_taxe).toLocaleString('fr-FR')} FCFA</strong>`)}
           </div>
+          <hr>
+          <div class="small text-muted mb-2">Photo de la carte grise</div>
+          ${auto.carte_grise_image
+            ? `<a href="${auto.carte_grise_image}" target="_blank">
+                 <img src="${auto.carte_grise_image}" alt="Carte grise" class="img-fluid rounded border" style="max-height:220px;">
+               </a>`
+            : '<div class="text-muted small"><i class="bi bi-exclamation-triangle me-1"></i>Aucune image fournie.</div>'}
         </div>
 
         <!-- Propriétaire -->

@@ -1667,7 +1667,7 @@ def import_vehicules_csv(request):
                 erreurs.append(f"Ligne {i} : région '{region_nom}' introuvable.")
                 continue
 
-        if Automobile.objects.filter(immatriculation=immat, region=region).exists():
+        if Automobile.objects.filter(immatriculation=immat).exists():
             ignores += 1
             continue
 
@@ -1836,7 +1836,7 @@ def importer_depuis_externe(request):
                 erreurs.append(f"Ligne {i} : région '{region_nom}' introuvable.")
                 continue
 
-        if Automobile.objects.filter(immatriculation=immat, region=region).exists():
+        if Automobile.objects.filter(immatriculation=immat).exists():
             ignores += 1
             continue
 

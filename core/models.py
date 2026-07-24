@@ -102,7 +102,7 @@ class Utilisateur(AbstractBaseUser):
 
 
 class Automobile(models.Model):
-    immatriculation = models.CharField(max_length=20)
+    immatriculation = models.CharField(max_length=20, unique=True)
     pays = models.CharField(max_length=100, default='NIGER')
     region = models.ForeignKey(Region, on_delete=models.PROTECT)
     nom = models.CharField(max_length=100)
@@ -134,7 +134,6 @@ class Automobile(models.Model):
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = [['immatriculation', 'region']]
         ordering = ['-date_creation']
 
     def __str__(self):
